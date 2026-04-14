@@ -1,7 +1,10 @@
 import { Cpu, HardDrive, Wifi, AlertCircle } from 'lucide-react'
 
-const StatCard = ({ icon: Icon, label, value, color, subtext, unit = '%', showBar = true }) => (
-  <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 hover:border-gray-700 transition-all">
+const StatCard = ({ icon: Icon, label, value, color, subtext, unit = '%', showBar = true, onClick }) => (
+  <div 
+    className={`bg-gray-900 rounded-xl p-5 border border-gray-800 hover:border-gray-700 transition-all ${onClick ? 'cursor-pointer' : ''}`}
+    onClick={onClick}
+  >
     <div className="flex items-start justify-between mb-4">
       <div className={`p-3 rounded-lg ${color}`}>
         <Icon className="w-6 h-6 text-white" />
@@ -24,7 +27,7 @@ const StatCard = ({ icon: Icon, label, value, color, subtext, unit = '%', showBa
   </div>
 )
 
-const SystemStats = ({ data }) => {
+const SystemStats = ({ data, onViewThreats }) => {
   // Format network bytes per second - shows appropriate unit (B/s, KB/s, MB/s)
   const formatNet = (bytes) => {
     if (!bytes || bytes === 0) return '0 KB/s'
@@ -73,7 +76,8 @@ const SystemStats = ({ data }) => {
       color: 'bg-red-500/20', 
       subtext: 'Detected threats',
       unit: '',
-      showBar: false
+      showBar: false,
+      onClick: onViewThreats
     },
   ]
 

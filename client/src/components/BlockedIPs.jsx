@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Ban, Unlock, RefreshCw, Loader2, Shield } from 'lucide-react'
+import { Ban, Unlock, RefreshCw, Loader2, Shield, Globe, CheckCircle } from 'lucide-react'
 import api from '../services/api'
 
 const BlockedIPs = () => {
@@ -37,56 +37,83 @@ const BlockedIPs = () => {
   }
 
   return (
-    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-      <div className="flex items-center justify-between mb-6">
+    <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-red-500/20 rounded-lg">
+          <div className="p-2.5 bg-gradient-to-br from-red-500/20 to-orange-500/20 rounded-xl border border-red-500/20">
             <Ban className="w-5 h-5 text-red-400" />
           </div>
           <div>
-            <h3 className="font-bold">Blocked IPs</h3>
-            <p className="text-xs text-gray-500">{blocked.length} IPs currently blocked</p>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-white">Blocked IPs</h3>
+              <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border ${
+                blocked.length > 0 
+                  ? 'bg-red-500/15 text-red-400 border-red-500/20' 
+                  : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
+              }`}>
+                {blocked.length} blocked
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {blocked.length > 0 ? 'Firewall protection active' : 'No blocked IPs'}
+            </p>
           </div>
         </div>
         <button
           onClick={fetchBlocked}
           disabled={loading}
-          className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+          className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-all disabled:opacity-50"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
         </button>
       </div>
 
+      {/* Content */}
       {loading && blocked.length === 0 ? (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-400 mx-auto mb-3" />
+            <p className="text-sm text-gray-500">Loading blocked IPs...</p>
+          </div>
         </div>
       ) : blocked.length === 0 ? (
-        <div className="text-center py-8">
-          <Shield className="w-12 h-12 text-emerald-500/20 mx-auto mb-3" />
-          <p className="text-gray-500">No IPs currently blocked</p>
-          <p className="text-xs text-gray-600 mt-1">Your system is secure</p>
+        <div className="text-center py-10 px-4">
+          <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-500/20">
+            <Shield className="w-8 h-8 text-emerald-400" />
+          </div>
+          <h4 className="text-sm font-medium text-gray-300 mb-1">No IPs Currently Blocked</h4>
+          <p className="text-xs text-gray-500">Your system is secure and no threats have been blocked</p>
+          <div className="mt-4 flex items-center justify-center gap-2 text-xs text-emerald-400">
+            <CheckCircle className="w-3.5 h-3.5" />
+            <span>Firewall protection active</span>
+          </div>
         </div>
       ) : (
-        <div className="space-y-2 max-h-64 overflow-y-auto">
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
           {blocked.map((ip, index) => (
             <div 
               key={index}
-              className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700/50"
+              className="group flex items-center justify-between p-3.5 bg-gray-800/40 rounded-xl border border-gray-700/50 hover:border-red-500/30 hover:bg-gray-800/60 transition-all"
             >
               <div className="flex items-center gap-3">
-                <Ban className="w-4 h-4 text-red-400" />
-                <code className="text-sm font-mono text-gray-300">{ip}</code>
+                <div className="p-2 bg-red-500/10 rounded-lg">
+                  <Globe className="w-4 h-4 text-red-400" />
+                </div>
+                <div>
+                  <code className="text-sm font-mono text-gray-300 block">{ip}</code>
+                  <span className="text-[10px] text-gray-500">Blocked by firewall</span>
+                </div>
               </div>
               <button
                 onClick={() => unblockIP(ip)}
                 disabled={actionLoading === ip}
-                className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg text-xs font-medium transition-all disabled:opacity-50 border border-emerald-500/20"
               >
                 {actionLoading === ip ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Unlock className="w-3 h-3" />
+                  <Unlock className="w-3.5 h-3.5" />
                 )}
                 Unblock
               </button>

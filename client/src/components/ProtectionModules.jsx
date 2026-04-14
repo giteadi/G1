@@ -424,10 +424,14 @@ const ProtectionModules = ({ detailed = false }) => {
           ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3' 
           : 'grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
       }`}>
-        {modules.map((module, index) => (
+        {modules.map((module) => (
           <ModuleCard 
-            key={index} 
-            {...module} 
+            key={module.scanType}
+            icon={module.icon}
+            title={module.title}
+            subtitle={module.subtitle}
+            features={module.features}
+            color={module.color}
             active={config?.[module.key] !== false}
             scanning={scanning[module.scanType]}
             onToggle={() => toggleModule(module.key)}

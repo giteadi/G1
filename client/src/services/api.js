@@ -72,20 +72,23 @@ class G1Api {
 
   async runModuleScan(scanType) {
     try {
-      // Map frontend scan types to backend module names
+      // Map frontend scan types to backend method names (exact match)
       const moduleMap = {
-        'crypto': 'cryptoMiners',
-        'rootkit': 'rootkit',
-        'crons': 'suspiciousCrons',
-        'ports': 'openPorts',
-        'ssh': 'sSHConfig',
-        'privacy': 'privacyLeaks',
-        'darkweb': 'darkWebConnections',
-        'hidden': 'hiddenProcesses'
+        'crypto': 'CryptoMiners',
+        'rootkit': 'Rootkit',
+        'crons': 'SuspiciousCrons',
+        'ports': 'OpenPorts',
+        'ssh': 'SSHConfig',
+        'privacy': 'PrivacyLeaks',
+        'darkweb': 'DarkWebConnections',
+        'hidden': 'HiddenProcesses',
+        'sudoers': 'SuspiciousSudoers',
+        'writable': 'WorldWritable'
       };
       
       const module = moduleMap[scanType];
       if (!module) {
+        console.error('Invalid scan type:', scanType);
         return { success: false, error: 'Invalid scan type' };
       }
 
@@ -94,6 +97,13 @@ class G1Api {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ module })
       });
+      
+      if (!res.ok) {
+        const error = await res.json();
+        console.error('Scan failed:', error);
+        return { success: false, error: error.error || 'Scan failed' };
+      }
+      
       return await res.json();
     } catch (e) {
       console.error('Module scan failed:', e);
@@ -121,6 +131,20 @@ class G1Api {
       return await res.json();
     } catch (e) {
       console.error('Clean failed:', e);
+      return { success: false, error: e.message };
+    }
+  }
+
+  async killProcess(pid) {
+    try {
+      const res = await fetch(`${API_BASE}/threats/kill`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pid })
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Kill process failed:', e);
       return { success: false, error: e.message };
     }
   }
