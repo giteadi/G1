@@ -79,6 +79,30 @@ class G1Api {
     }
   }
 
+  async cleanThreats() {
+    try {
+      const res = await fetch(`${API_BASE}/threats/clean`, { method: 'POST' });
+      return await res.json();
+    } catch (e) {
+      console.error('Clean failed:', e);
+      return { success: false, error: e.message };
+    }
+  }
+
+  async whitelistIP(ip) {
+    try {
+      const res = await fetch(`${API_BASE}/threats/unblock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip })
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Whitelist failed:', e);
+      return { success: false, error: e.message };
+    }
+  }
+
   async selfAudit() {
     try {
       const res = await fetch(`${API_BASE}/learning/self-audit`, { method: 'POST' });

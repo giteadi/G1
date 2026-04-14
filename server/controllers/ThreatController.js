@@ -100,6 +100,24 @@ class ThreatController {
     }
   }
 
+  static async blockIP(req, res) {
+    try {
+      const { ip } = req.body;
+      if (!ip) {
+        return res.status(400).json({ error: 'IP address required' });
+      }
+
+      const success = BlockedIP.add(ip);
+      
+      res.json({
+        success,
+        message: success ? `${ip} blocked` : `Failed to block ${ip}`
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+
   static async unblockIP(req, res) {
     try {
       const { ip } = req.body;

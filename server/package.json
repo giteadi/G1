@@ -21,8 +21,10 @@
   "dependencies": {
     "axios": "^1.6.0",
     "chalk": "^4.1.2",
+    "dotenv": "^16.3.1",
     "chokidar": "^3.5.3",
     "commander": "^11.1.0",
+    "cors": "^2.8.6",
     "express": "^4.18.2",
     "mysql2": "^3.22.0",
     "node-cron": "^3.0.3",

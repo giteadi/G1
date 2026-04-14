@@ -1,5 +1,7 @@
 'use strict';
 
+require('dotenv').config();
+
 const http = require('http');
 const socketio = require('socket.io');
 const app = require('./app');
