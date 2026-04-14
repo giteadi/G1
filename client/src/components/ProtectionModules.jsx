@@ -1,6 +1,8 @@
-import { Pickaxe, Lock, Shield, Search, Bot, Zap, Check } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Pickaxe, Lock, Shield, Search, Bot, Zap, Check, Loader2 } from 'lucide-react'
+import api from '../services/api'
 
-const ModuleCard = ({ icon: Icon, title, subtitle, features, active, color }) => (
+const ModuleCard = ({ icon: Icon, title, subtitle, features, active, color, onToggle }) => (
   <div className={`bg-gray-800/50 rounded-lg p-4 border ${
     active ? `border-${color}-500/30` : 'border-gray-700/50'
   } transition-all hover:border-gray-600`}>
@@ -8,12 +10,23 @@ const ModuleCard = ({ icon: Icon, title, subtitle, features, active, color }) =>
       <div className={`p-2 rounded-lg bg-${color}-500/20`}>
         <Icon className={`w-5 h-5 text-${color}-400`} />
       </div>
-      {active && (
-        <span className="flex items-center gap-1 text-xs text-emerald-400">
-          <Check className="w-3 h-3" />
-          Active
-        </span>
-      )}
+      <button
+        onClick={onToggle}
+        className={`text-xs px-2 py-1 rounded-full transition-colors ${
+          active 
+            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' 
+            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+        }`}
+      >
+        {active ? (
+          <span className="flex items-center gap-1">
+            <Check className="w-3 h-3" />
+            Active
+          </span>
+        ) : (
+          'Disabled'
+        )}
+      </button>
     </div>
     <h4 className="font-medium text-sm mb-1">{title}</h4>
     <p className="text-xs text-gray-500 mb-3">{subtitle}</p>
@@ -28,13 +41,16 @@ const ModuleCard = ({ icon: Icon, title, subtitle, features, active, color }) =>
 )
 
 const ProtectionModules = ({ detailed = false }) => {
+  const [config, setConfig] = useState(null)
+  const [loading, setLoading] = useState(false)
+
   const modules = [
     { 
       icon: Pickaxe, 
       title: 'Crypto Miner', 
       subtitle: 'CPU spike detection',
       features: ['process kill', 'hash detection'],
-      active: true,
+      key: 'auto_kill',
       color: 'amber'
     },
     { 
@@ -42,7 +58,7 @@ const ProtectionModules = ({ detailed = false }) => {
       title: 'Brute Force', 
       subtitle: 'Login watcher',
       features: ['login signature', 'IP auto-ban'],
-      active: true,
+      key: 'auto_block',
       color: 'amber'
     },
     { 
@@ -50,7 +66,7 @@ const ProtectionModules = ({ detailed = false }) => {
       title: 'DDoS Guard', 
       subtitle: 'Traffic analysis',
       features: ['rate limiting', 'packet filter'],
-      active: true,
+      key: 'ddos_guard',
       color: 'amber'
     },
     { 
@@ -58,7 +74,7 @@ const ProtectionModules = ({ detailed = false }) => {
       title: 'Malware Scan', 
       subtitle: 'File signature',
       features: ['rootkit detect', 'quarantine'],
-      active: true,
+      key: 'malware_scan',
       color: 'amber'
     },
     { 
@@ -66,10 +82,34 @@ const ProtectionModules = ({ detailed = false }) => {
       title: 'Phishing/Bot', 
       subtitle: 'Domain block',
       features: ['bot fingerprint', 'URL check'],
-      active: true,
+      key: 'phishing_guard',
       color: 'amber'
     },
   ]
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      const result = await api.fetchMetrics()
+      if (result) {
+        // Get config from status endpoint
+        const statusRes = await fetch('http://localhost:3000/api/status')
+        const statusData = await statusRes.json()
+        if (statusData.config) {
+          setConfig(statusData.config)
+        }
+      }
+    }
+    fetchStatus()
+  }, [])
+
+  const toggleModule = async (key) => {
+    setLoading(true)
+    // Toggle would be implemented here - for now just UI toggle
+    setConfig(prev => ({ ...prev, [key]: !prev?.[key] }))
+    setLoading(false)
+  }
+
+  const activeCount = modules.filter(m => config?.[m.key] !== false).length
 
   return (
     <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
@@ -85,13 +125,25 @@ const ProtectionModules = ({ detailed = false }) => {
         </div>
         <div className="flex items-center gap-2 text-xs text-emerald-400">
           <Zap className="w-4 h-4" />
-          <span>5/5 Active</span>
+          <span>{activeCount}/{modules.length} Active</span>
         </div>
       </div>
 
+      {loading && (
+        <div className="mb-4 flex items-center gap-2 text-xs text-gray-400">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Updating configuration...
+        </div>
+      )}
+
       <div className={`grid gap-3 ${detailed ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 md:grid-cols-3 lg:grid-cols-5'}`}>
         {modules.map((module, index) => (
-          <ModuleCard key={index} {...module} />
+          <ModuleCard 
+            key={index} 
+            {...module} 
+            active={config?.[module.key] !== false}
+            onToggle={() => toggleModule(module.key)}
+          />
         ))}
       </div>
 

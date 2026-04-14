@@ -34,11 +34,10 @@ class StatusController {
 
   static async getMetrics(req, res) {
     try {
-      const [cpu, mem, net, load] = await Promise.all([
+      const [cpu, mem, net] = await Promise.all([
         si.currentLoad(),
         si.mem(),
-        si.networkStats(),
-        si.fullLoad()
+        si.networkStats()
       ]);
 
       // Calculate actual memory usage (excluding cached)
@@ -46,16 +45,32 @@ class StatusController {
       const actualUsed = (mem.active || 0) + (mem.wired || 0);
       const ramPercent = Math.round((actualUsed / mem.total) * 100);
       
+      // Calculate network speed (bytes per second) using cached readings
+      let rx_per_sec = 0;
+      let tx_per_sec = 0;
+      const now = Date.now();
+      
+      if (_lastNet && _lastNetTime && net[0]) {
+        const elapsed = (now - _lastNetTime) / 1000; // seconds
+        if (elapsed > 0) {
+          rx_per_sec = Math.max(0, Math.round((net[0].rx_bytes - _lastNet[0].rx_bytes) / elapsed));
+          tx_per_sec = Math.max(0, Math.round((net[0].tx_bytes - _lastNet[0].tx_bytes) / elapsed));
+        }
+      }
+      
+      // Update cache
+      _lastNet = net;
+      _lastNetTime = now;
+      
       res.json({
         cpu: Math.round(cpu.currentLoad),
         ram: ramPercent,
         ram_used_gb: (actualUsed / 1073741824).toFixed(1),
         ram_total_gb: (mem.total / 1073741824).toFixed(1),
         ram_cached_gb: ((mem.cached || 0) / 1073741824).toFixed(1),
-        net_rx: net[0]?.rx_bytes || 0,
-        net_tx: net[0]?.tx_bytes || 0,
+        net_rx: rx_per_sec,
+        net_tx: tx_per_sec,
         blocked_count: BlockedIP.size(),
-        load_average: load,
         timestamp: Date.now()
       });
     } catch (e) {

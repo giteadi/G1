@@ -1,8 +1,31 @@
-import { useState } from 'react'
-import { Shield, AlertTriangle, Settings, Activity, Cpu, Menu, X } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Shield, AlertTriangle, Settings, Activity, Cpu, Menu, X, Loader2 } from 'lucide-react'
+import api from '../services/api'
 
 const Sidebar = ({ activeTab, setActiveTab }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [status, setStatus] = useState({ status: 'active', threats: { total: 0 } })
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      setLoading(true)
+      try {
+        const res = await fetch('http://localhost:3000/api/status')
+        const data = await res.json()
+        if (data) {
+          setStatus(data)
+        }
+      } catch (e) {
+        console.error('Failed to fetch status:', e)
+      }
+      setLoading(false)
+    }
+    fetchStatus()
+    const interval = setInterval(fetchStatus, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
   const menuItems = [
     { id: 'dashboard', icon: Shield, label: 'Dashboard' },
     { id: 'threats', icon: AlertTriangle, label: 'Threats' },
@@ -101,11 +124,26 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
           <div className="flex items-center gap-2 mb-2">
             <Activity className="w-4 h-4 text-emerald-400" />
             <span className="text-sm font-medium">System Status</span>
+            {loading && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-            <span className="text-xs text-gray-400">Protected & Active</span>
+            <div className={`w-2 h-2 rounded-full animate-pulse ${
+              status.status === 'active' ? 'bg-emerald-500' : 'bg-red-500'
+            }`}></div>
+            <span className="text-xs text-gray-400">
+              {status.status === 'active' ? 'Protected & Active' : 'System Issue'}
+            </span>
           </div>
+          {status.threats?.total > 0 && (
+            <div className="mt-2 text-xs text-red-400">
+              {status.threats.total} threats detected
+            </div>
+          )}
+          {status.uptime && (
+            <div className="mt-1 text-xs text-gray-500">
+              Uptime: {Math.floor(status.uptime / 3600)}h {Math.floor((status.uptime % 3600) / 60)}m
+            </div>
+          )}
         </div>
       </div>
       </aside>

@@ -7,6 +7,10 @@ import ThreatMonitor from './components/ThreatMonitor'
 import ProtectionModules from './components/ProtectionModules'
 import ActionPanel from './components/ActionPanel'
 import ContextEngine from './components/ContextEngine'
+import SettingsPanel from './components/Settings'
+import SystemInfo from './components/SystemInfo'
+import LearningRules from './components/LearningRules'
+import BlockedIPs from './components/BlockedIPs'
 import api from './services/api'
 
 const socket = io('http://localhost:3000')
@@ -20,6 +24,7 @@ function App() {
     threats: 0
   })
   const [learningStats, setLearningStats] = useState(null)
+  const [threatStats, setThreatStats] = useState({ count: 0, recent: [] })
   const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
@@ -55,13 +60,26 @@ function App() {
       }
     }
     fetchLearningStats()
-    const interval = setInterval(fetchLearningStats, 30000)
+    const learningInterval = setInterval(fetchLearningStats, 30000)
+
+    // Fetch threat stats
+    const fetchThreatStats = async () => {
+      const result = await api.fetchThreats()
+      if (result) {
+        const threats = Array.isArray(result) ? result : []
+        setThreatStats({ count: threats.length, recent: threats.slice(0, 5) })
+        setSystemData(prev => ({ ...prev, threats: threats.length }))
+      }
+    }
+    fetchThreatStats()
+    const threatInterval = setInterval(fetchThreatStats, 30000)
 
     return () => {
       socket.off('connect')
       socket.off('disconnect')
       socket.off('metrics')
-      clearInterval(interval)
+      clearInterval(learningInterval)
+      clearInterval(threatInterval)
     }
   }, [])
 
@@ -84,8 +102,8 @@ function App() {
               <SystemStats data={systemData} />
               
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <ThreatMonitor />
-                <ContextEngine />
+                <ThreatMonitor threatStats={threatStats} />
+                <ContextEngine learningStats={learningStats} />
               </div>
               
               <ProtectionModules />
@@ -97,23 +115,32 @@ function App() {
           {activeTab === 'threats' && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold text-red-400">Threat Analysis</h2>
-              <ThreatMonitor detailed />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                  <ThreatMonitor detailed threatStats={threatStats} />
+                </div>
+                <div>
+                  <BlockedIPs />
+                </div>
+              </div>
             </div>
           )}
           
           {activeTab === 'protection' && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold text-amber-400">Protection Modules</h2>
-              <ProtectionModules detailed />
+              <h2 className="text-2xl font-bold text-amber-400">Protection & System</h2>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ProtectionModules detailed />
+                <SystemInfo />
+              </div>
+              <LearningRules />
             </div>
           )}
           
           {activeTab === 'settings' && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold text-blue-400">System Settings</h2>
-              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                <p className="text-gray-400">Settings panel coming soon...</p>
-              </div>
+              <SettingsPanel />
             </div>
           )}
         </main>

@@ -112,6 +112,40 @@ class G1Api {
       return { success: false, error: e.message };
     }
   }
+
+  async fetchSystemInfo() {
+    try {
+      const res = await fetch(`${API_BASE}/status/system`);
+      return await res.json();
+    } catch (e) {
+      console.error('System info fetch failed:', e);
+      return null;
+    }
+  }
+
+  async fetchStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/status`);
+      return await res.json();
+    } catch (e) {
+      console.error('Status fetch failed:', e);
+      return null;
+    }
+  }
+
+  async updateConfig(config) {
+    try {
+      const res = await fetch(`${API_BASE}/status/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Config update failed:', e);
+      return { success: false, error: e.message };
+    }
+  }
 }
 
 export default new G1Api();

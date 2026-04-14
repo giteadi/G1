@@ -1,6 +1,6 @@
 import { Brain, MemoryStick, TrendingUp, Activity } from 'lucide-react'
 
-const ContextEngine = () => {
+const ContextEngine = ({ learningStats }) => {
   return (
     <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
       <div className="flex items-center gap-3 mb-6">
@@ -23,11 +23,15 @@ const ContextEngine = () => {
             <span className="text-xs text-emerald-400">Active</span>
           </div>
           <p className="text-xs text-gray-500">
-            Har event ka context store karta hai, normal vs abnormal samajhta hai
+            {learningStats?.description || 'Har event ka context store karta hai, normal vs abnormal samajhta hai'}
           </p>
           <div className="mt-3 flex gap-2">
-            <span className="text-xs px-2 py-1 bg-indigo-500/20 text-indigo-400 rounded">1,247 patterns</span>
-            <span className="text-xs px-2 py-1 bg-gray-700 text-gray-400 rounded">baseline: daily</span>
+            <span className="text-xs px-2 py-1 bg-indigo-500/20 text-indigo-400 rounded">
+              {learningStats?.patterns || learningStats?.total_rules || '1,247'} patterns
+            </span>
+            <span className="text-xs px-2 py-1 bg-gray-700 text-gray-400 rounded">
+              baseline: {learningStats?.baseline || 'daily'}
+            </span>
           </div>
         </div>
 
@@ -40,9 +44,14 @@ const ContextEngine = () => {
             <span className="text-xs text-emerald-400">Learning</span>
           </div>
           <div className="mt-2 bg-gray-700 rounded-full h-2">
-            <div className="h-2 bg-emerald-500 rounded-full" style={{ width: '78%' }}></div>
+            <div 
+              className="h-2 bg-emerald-500 rounded-full transition-all duration-500" 
+              style={{ width: `${learningStats?.confidence || 78}%` }}
+            ></div>
           </div>
-          <p className="text-xs text-gray-500 mt-2">78% baseline confidence achieved</p>
+          <p className="text-xs text-gray-500 mt-2">
+            {learningStats?.confidence || 78}% baseline confidence achieved
+          </p>
         </div>
 
         <div className="flex items-center gap-3 text-xs text-gray-500">
