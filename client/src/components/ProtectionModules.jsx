@@ -1,6 +1,185 @@
 import { useState, useEffect } from 'react'
-import { Pickaxe, Lock, Shield, Search, Bot, Zap, Check, Loader2, Play } from 'lucide-react'
+import { Pickaxe, Lock, Shield, Search, Bot, Zap, Check, Loader2, Play, Eye, Globe, FileWarning, Network } from 'lucide-react'
 import api from '../services/api'
+
+const ResultRow = ({ result }) => {
+  const [open, setOpen] = useState(false)
+  const [fixing, setFixing] = useState(false)
+  const [fixResult, setFixResult] = useState(null)
+
+  const isThreat  = result.status === 'threat'
+  const isWarning = result.status === 'warning'
+  const isClean   = result.status === 'clean'
+
+  const statusStyle = isThreat
+    ? 'border-l-4 border-red-500 bg-red-500/5'
+    : isWarning
+    ? 'border-l-4 border-yellow-500 bg-yellow-500/5'
+    : 'border-l-4 border-green-600 bg-gray-800/20'
+
+  const statusLabel = isThreat
+    ? <span className="text-xs px-2 py-0.5 bg-red-500/20 text-red-400 rounded">THREAT</span>
+    : isWarning
+    ? <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">WARNING</span>
+    : <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded">CLEAN</span>
+
+  const autoFix = async () => {
+    setFixing(true)
+    try {
+      const res = await fetch('http://localhost:3000/api/threats/clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ module: result.module, force: true })
+      })
+      const data = await res.json()
+      setFixResult(data.results?.[0]?.action || 'Cleanup initiated')
+    } catch (e) {
+      setFixResult('Fix failed: ' + e.message)
+    }
+    setFixing(false)
+  }
+
+  return (
+    <div className={`${statusStyle} transition-all`}>
+      
+      {/* Row Header — click to expand */}
+      <div
+        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/5"
+        onClick={() => setOpen(!open)}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          {statusLabel}
+          <span className="text-sm font-medium capitalize text-gray-200 truncate">
+            {result.module?.replace(/_/g, ' ')}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-gray-400 hidden sm:block">{result.message}</span>
+          {(result.findings?.length > 0 || result.ai_analysis) && (
+            <span className="text-gray-500 text-xs">{open ? '▲' : '▼'}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Expanded Content */}
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          
+          {/* Message — full */}
+          <p className="text-xs text-gray-400">{result.message}</p>
+
+          {/* Findings */}
+          {result.findings?.length > 0 && (
+            <div className="bg-black/30 rounded-lg p-3">
+              <p className="text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">
+                Findings ({result.findings.length})
+              </p>
+              <ul className="space-y-1.5">
+                {result.findings.map((f, fi) => (
+                  <li key={fi} className="flex gap-2 text-xs">
+                    <span className="text-gray-600 shrink-0 font-mono">{String(fi + 1).padStart(2, '0')}</span>
+                    <span className="font-mono text-gray-300 break-all">{f}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* AI Analysis */}
+          {result.ai_analysis && (
+            <div className="bg-black/30 rounded-lg p-3">
+              <p className="text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">
+                AI Analysis
+              </p>
+              <div className="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">
+                {result.ai_analysis}
+              </div>
+            </div>
+          )}
+
+          {/* Fix Result */}
+          {fixResult && (
+            <div className="text-xs p-2 bg-blue-500/10 border border-blue-500/20 rounded text-blue-300">
+              {fixResult}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          {(isThreat || isWarning) && !fixResult && (
+            <div className="flex gap-2">
+              <button
+                onClick={autoFix}
+                disabled={fixing}
+                className="text-xs flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded transition-colors"
+              >
+                {fixing
+                  ? <><Loader2 className="w-3 h-3 animate-spin" /> Fixing...</>
+                  : <><Zap className="w-3 h-3" /> Auto Fix</>
+                }
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const ScanResultModal = ({ scanResult, onClose }) => {
+  if (!scanResult) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-gray-900 rounded-xl border border-gray-700 max-w-5xl w-full max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        
+        {/* Modal Header */}
+        <div className="flex items-center justify-between p-4 bg-gray-800/80 border-b border-gray-700">
+          <div>
+            <h3 className="text-lg font-bold text-white">{scanResult.module} Scan Results</h3>
+            <p className="text-xs text-gray-400 mt-1">
+              {new Date(scanResult.timestamp).toLocaleString()}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {scanResult.summary && (
+              <div className="flex gap-2 text-xs">
+                {scanResult.summary.threats > 0 && (
+                  <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded font-medium">
+                    {scanResult.summary.threats} Threat{scanResult.summary.threats > 1 ? 's' : ''}
+                  </span>
+                )}
+                {scanResult.summary.warnings > 0 && (
+                  <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded font-medium">
+                    {scanResult.summary.warnings} Warning{scanResult.summary.warnings > 1 ? 's' : ''}
+                  </span>
+                )}
+                {scanResult.summary.clean > 0 && (
+                  <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded font-medium">
+                    {scanResult.summary.clean} Clean
+                  </span>
+                )}
+              </div>
+            )}
+            <button 
+              onClick={onClose}
+              className="text-gray-400 hover:text-white text-2xl leading-none w-8 h-8 flex items-center justify-center rounded hover:bg-gray-700"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Body - Scrollable Results */}
+        <div className="divide-y divide-gray-700/50 max-h-[calc(90vh-80px)] overflow-y-auto">
+          {scanResult.results?.map((r, i) => (
+            <ResultRow key={i} result={r} />
+          ))}
+        </div>
+
+      </div>
+    </div>
+  )
+}
 
 const ModuleCard = ({ icon: Icon, title, subtitle, features, active, color, onToggle, onScan, scanning }) => (
   <div className={`bg-gray-800/50 rounded-lg p-3 md:p-4 border ${
@@ -86,7 +265,7 @@ const ProtectionModules = ({ detailed = false }) => {
       features: ['login signature', 'IP auto-ban'],
       key: 'auto_block',
       scanType: 'brute_force',
-      color: 'amber'
+      color: 'red'
     },
     { 
       icon: Zap, 
@@ -95,25 +274,70 @@ const ProtectionModules = ({ detailed = false }) => {
       features: ['rate limiting', 'packet filter'],
       key: 'ddos_guard',
       scanType: 'ddos',
-      color: 'amber'
+      color: 'purple'
     },
     { 
       icon: Search, 
-      title: 'Malware Scan', 
-      subtitle: 'File signature',
-      features: ['rootkit detect', 'quarantine'],
+      title: 'Rootkit Scan', 
+      subtitle: 'Deep system check',
+      features: ['rootkit detect', 'hidden process'],
       key: 'malware_scan',
-      scanType: 'malware',
-      color: 'amber'
+      scanType: 'rootkit',
+      color: 'red'
+    },
+    { 
+      icon: FileWarning, 
+      title: 'Suspicious Crons', 
+      subtitle: 'Scheduled task check',
+      features: ['cron analysis', 'auto-remove'],
+      key: 'cron_guard',
+      scanType: 'crons',
+      color: 'orange'
+    },
+    { 
+      icon: Network, 
+      title: 'Open Ports', 
+      subtitle: 'Port monitoring',
+      features: ['suspicious ports', 'auto-close'],
+      key: 'port_guard',
+      scanType: 'ports',
+      color: 'blue'
+    },
+    { 
+      icon: Shield, 
+      title: 'SSH Config', 
+      subtitle: 'SSH hardening',
+      features: ['config check', 'best practices'],
+      key: 'ssh_guard',
+      scanType: 'ssh',
+      color: 'cyan'
+    },
+    { 
+      icon: Eye, 
+      title: 'Privacy Leaks', 
+      subtitle: 'Device access monitor',
+      features: ['mic/camera', 'permission check'],
+      key: 'privacy_guard',
+      scanType: 'privacy',
+      color: 'pink'
+    },
+    { 
+      icon: Globe, 
+      title: 'Dark Web', 
+      subtitle: 'Tor/C2 detection',
+      features: ['Tor traffic', 'C2 ports'],
+      key: 'darkweb_guard',
+      scanType: 'darkweb',
+      color: 'violet'
     },
     { 
       icon: Bot, 
-      title: 'Phishing/Bot', 
-      subtitle: 'Domain block',
-      features: ['bot fingerprint', 'URL check'],
-      key: 'phishing_guard',
-      scanType: 'phishing',
-      color: 'amber'
+      title: 'Hidden Process', 
+      subtitle: 'Deep scan only',
+      features: ['process hiding', 'stealth detect'],
+      key: 'hidden_guard',
+      scanType: 'hidden',
+      color: 'gray'
     },
   ]
 
@@ -149,16 +373,14 @@ const ProtectionModules = ({ detailed = false }) => {
 
   const runModuleScan = async (scanType, moduleName) => {
     setScanning({ ...scanning, [scanType]: true })
-    setScanResult(null)
     
     try {
-      const result = await api.runScan(scanType)
+      const result = await api.runModuleScan(scanType)
       if (result.success) {
         setScanResult({
           module: moduleName,
           type: scanType,
-          total: result.total_checks,
-          found: result.filtered_results,
+          summary: result.summary,
           results: result.results,
           timestamp: result.timestamp
         })
@@ -197,36 +419,6 @@ const ProtectionModules = ({ detailed = false }) => {
         </div>
       )}
 
-      {scanResult && (
-        <div className="mb-4 p-3 md:p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-medium text-blue-400 truncate">{scanResult.module} Scan Complete</h4>
-              <p className="text-xs text-gray-400 mt-1">
-                Checked {scanResult.total} items • Found {scanResult.found} relevant results
-              </p>
-            </div>
-            <button 
-              onClick={() => setScanResult(null)}
-              className="text-gray-500 hover:text-gray-300 text-xl leading-none flex-shrink-0"
-            >
-              ×
-            </button>
-          </div>
-          <div className="mt-3 space-y-2 max-h-40 overflow-y-auto">
-            {scanResult.results.map((r, i) => (
-              <div key={i} className={`text-xs p-2 rounded break-words ${
-                r.status === 'threat' ? 'bg-red-500/20 text-red-400' :
-                r.status === 'warning' ? 'bg-amber-500/20 text-amber-400' :
-                'bg-gray-700/50 text-gray-400'
-              }`}>
-                {r.message}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className={`grid gap-3 ${
         detailed 
           ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3' 
@@ -253,6 +445,9 @@ const ProtectionModules = ({ detailed = false }) => {
           Instant action — no human needed • Block IP • Kill process • Quarantine file • Alert email • Log entry
         </p>
       </div>
+
+      {/* Full Screen Modal for Scan Results */}
+      <ScanResultModal scanResult={scanResult} onClose={() => setScanResult(null)} />
     </div>
   )
 }

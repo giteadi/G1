@@ -55,14 +55,48 @@ class G1Api {
     }
   }
 
-  async runScan(type = 'full') {
+  async runScan(module = null, deep = false) {
     try {
-      const res = await fetch(`${API_BASE}/threats/scan?type=${type}`, { 
-        method: 'POST' 
+      // Use new scan endpoint
+      const res = await fetch(`${API_BASE}/scan/run`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ module, deep })
       });
       return await res.json();
     } catch (e) {
       console.error('Scan failed:', e);
+      return { success: false, error: e.message };
+    }
+  }
+
+  async runModuleScan(scanType) {
+    try {
+      // Map frontend scan types to backend module names
+      const moduleMap = {
+        'crypto': 'cryptoMiners',
+        'rootkit': 'rootkit',
+        'crons': 'suspiciousCrons',
+        'ports': 'openPorts',
+        'ssh': 'sSHConfig',
+        'privacy': 'privacyLeaks',
+        'darkweb': 'darkWebConnections',
+        'hidden': 'hiddenProcesses'
+      };
+      
+      const module = moduleMap[scanType];
+      if (!module) {
+        return { success: false, error: 'Invalid scan type' };
+      }
+
+      const res = await fetch(`${API_BASE}/scan/run`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ module })
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Module scan failed:', e);
       return { success: false, error: e.message };
     }
   }

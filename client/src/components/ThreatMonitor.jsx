@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react'
 import { Network, FileKey, Cpu, FolderOpen, Clock, AlertTriangle, Shield, Loader2, ChevronDown, ChevronUp, X, CheckCircle, Ban, Trash2 } from 'lucide-react'
 import api from '../services/api'
 
-const ThreatCard = ({ icon: Icon, title, subtitle, status, color }) => (
-  <div className="bg-gray-800/50 rounded-lg p-3 md:p-4 border border-gray-700/50">
+const ThreatCard = ({ icon: Icon, title, subtitle, status, color, onClick }) => (
+  <div 
+    className="bg-gray-800/50 rounded-lg p-3 md:p-4 border border-gray-700/50 cursor-pointer hover:bg-gray-800 hover:border-gray-600 transition-all"
+    onClick={onClick}
+  >
     <div className="flex items-center justify-between gap-2 md:gap-3">
       <div className="flex items-center gap-2 md:gap-3 overflow-hidden">
         <div className={`p-2 rounded-lg ${color} flex-shrink-0`}>

@@ -202,12 +202,13 @@ const ActionPanel = () => {
       let result
       switch(action) {
         case 'scan':
-          result = await api.runScan('full')
+          result = await api.runScan(null, false) // Full scan, not deep
           if (result.success) {
             setScanResults(result.results)
+            const summary = result.summary || {}
             setMessage({ 
               type: 'success', 
-              text: `Scan complete! Found ${result.results.filter(r => r.status === 'threat').length} threats, ${result.results.filter(r => r.status === 'warning').length} warnings` 
+              text: `Scan complete! Found ${summary.threats || 0} threats, ${summary.warnings || 0} warnings` 
             })
           }
           break
@@ -267,7 +268,7 @@ const ActionPanel = () => {
       }
       
       // Refresh scan
-      const result = await api.runScan('full')
+      const result = await api.runScan(null, false)
       if (result.success) {
         setScanResults(result.results)
       }
