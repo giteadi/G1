@@ -55,9 +55,11 @@ class G1Api {
     }
   }
 
-  async runScan() {
+  async runScan(type = 'full') {
     try {
-      const res = await fetch(`${API_BASE}/threats/scan`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/threats/scan?type=${type}`, { 
+        method: 'POST' 
+      });
       return await res.json();
     } catch (e) {
       console.error('Scan failed:', e);

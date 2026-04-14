@@ -53,14 +53,40 @@ class ThreatController {
       const config = loadConfig();
       const scanner = new ScannerService(config);
       const deep = req.query.deep === 'true';
+      const type = req.query.type || 'full'; // crypto, brute_force, ddos, malware, phishing, full
       
       const results = await scanner.fullScan(deep);
+      
+      // Filter results by type if specified
+      let filteredResults = results;
+      if (type !== 'full') {
+        filteredResults = results.filter(r => {
+          const msg = r.message?.toLowerCase() || '';
+          switch(type) {
+            case 'crypto':
+              return msg.includes('process') || msg.includes('cpu') || msg.includes('miner');
+            case 'brute_force':
+              return msg.includes('ssh') || msg.includes('auth') || msg.includes('login');
+            case 'ddos':
+              return msg.includes('port') || msg.includes('connection') || msg.includes('network');
+            case 'malware':
+              return msg.includes('rootkit') || msg.includes('malware') || msg.includes('suspicious');
+            case 'phishing':
+              return msg.includes('domain') || msg.includes('url') || msg.includes('phishing');
+            default:
+              return true;
+          }
+        });
+      }
       
       res.json({
         success: true,
         timestamp: new Date().toISOString(),
+        scan_type: type,
         deep,
-        results
+        total_checks: results.length,
+        filtered_results: filteredResults.length,
+        results: filteredResults
       });
     } catch (e) {
       res.status(500).json({ error: e.message });

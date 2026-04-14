@@ -41,8 +41,8 @@ const SystemInfo = () => {
   )
 
   return (
-    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-      <div className="flex items-center justify-between mb-6">
+    <div className="bg-gray-900 rounded-xl p-4 md:p-6 border border-gray-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-blue-500/20 rounded-lg">
             <Server className="w-5 h-5 text-blue-400" />
@@ -55,7 +55,7 @@ const SystemInfo = () => {
         <button
           onClick={fetchInfo}
           disabled={loading}
-          className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+          className="p-2 text-gray-400 hover:text-white transition-colors disabled:opacity-50 self-end sm:self-auto"
         >
           {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
         </button>
@@ -86,25 +86,33 @@ const SystemInfo = () => {
             <InfoRow label="Used" value={`${info.memory?.used} GB`} />
             <InfoRow 
               label="Usage" 
-              value={`${((info.memory?.used / info.memory?.total) * 100).toFixed(1)}%`} 
+              value={info.memory?.total && info.memory?.used 
+                ? `${((parseFloat(info.memory.used) / parseFloat(info.memory.total)) * 100).toFixed(1)}%`
+                : 'N/A'
+              } 
             />
           </InfoCard>
 
           <InfoCard icon={HardDrive} title="Storage">
-            {info.disk?.map((d, i) => (
+            {info.disk?.slice(0, 4).map((d, i) => (
               <div key={i} className="border-t border-gray-700/50 pt-2 first:border-0 first:pt-0">
-                <InfoRow label={`Disk ${i + 1} (${d.fs})`} value={`${d.use}%`} />
-                <div className="mt-1 text-xs text-gray-500">
+                <InfoRow label={`Disk ${i + 1}`} value={`${d.use}%`} />
+                <div className="mt-1 text-xs text-gray-500 truncate" title={d.fs}>
                   {d.used} GB / {d.size} GB
                 </div>
                 <div className="mt-1 bg-gray-700 rounded-full h-1.5">
                   <div 
                     className="h-1.5 bg-emerald-500 rounded-full transition-all"
-                    style={{ width: `${d.use}%` }}
+                    style={{ width: `${Math.min(d.use, 100)}%` }}
                   ></div>
                 </div>
               </div>
             ))}
+            {info.disk?.length > 4 && (
+              <div className="text-xs text-gray-500 mt-2">
+                +{info.disk.length - 4} more disk(s)
+              </div>
+            )}
           </InfoCard>
         </div>
       ) : (

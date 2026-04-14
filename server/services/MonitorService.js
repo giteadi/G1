@@ -239,10 +239,14 @@ class MonitorService {
         si.mem()
       ]);
 
+      // Cross-platform memory calculation
+      const actualUsed = mem.available !== undefined 
+        ? mem.total - mem.available 
+        : mem.used;
+
       Memory.updateBaseline({
         cpu_avg: Math.round(cpu.currentLoad),
-        // Sahi RAM: active + wired only (cached exclude)
-        ram_avg: Math.round(((mem.active + mem.wired) / mem.total) * 100),
+        ram_avg: Math.round((actualUsed / mem.total) * 100),
         last_updated: new Date().toISOString()
       });
     } catch (e) {

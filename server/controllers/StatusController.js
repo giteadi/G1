@@ -9,6 +9,27 @@ const { loadConfig } = require('../config');
 let _lastNet = null;
 let _lastNetTime = null;
 
+// Helper to calculate network speed from cached readings
+async function getNetworkSpeed() {
+  const now = Date.now();
+  const net = await si.networkStats();
+
+  if (!_lastNet || !_lastNetTime || !net[0]) {
+    _lastNet = net;
+    _lastNetTime = now;
+    return { rx_per_sec: 0, tx_per_sec: 0 };
+  }
+
+  const elapsed = Math.max(0.5, (now - _lastNetTime) / 1000); // seconds
+  const rx_per_sec = Math.max(0, Math.round((net[0].rx_bytes - _lastNet[0].rx_bytes) / elapsed));
+  const tx_per_sec = Math.max(0, Math.round((net[0].tx_bytes - _lastNet[0].tx_bytes) / elapsed));
+
+  _lastNet = net;
+  _lastNetTime = now;
+
+  return { rx_per_sec, tx_per_sec };
+}
+
 class StatusController {
   static async getStatus(req, res) {
     try {
@@ -34,34 +55,20 @@ class StatusController {
 
   static async getMetrics(req, res) {
     try {
-      const [cpu, mem, net, cpuInfo] = await Promise.all([
+      const [cpu, mem, cpuInfo, netSpeed] = await Promise.all([
         si.currentLoad(),
         si.mem(),
-        si.networkStats(),
-        si.cpu()
+        si.cpu(),
+        getNetworkSpeed()
       ]);
 
-      // Calculate actual memory usage (excluding cached)
-      // active = apps using now, wired = OS reserved, cached = can be freed
-      const actualUsed = (mem.active || 0) + (mem.wired || 0);
+      // Cross-platform memory calculation
+      // Prefer (total - available) for accuracy across Windows/Linux/macOS
+      // Fallback to mem.used if available is not present
+      const actualUsed = mem.available !== undefined 
+        ? mem.total - mem.available 
+        : mem.used;
       const ramPercent = Math.round((actualUsed / mem.total) * 100);
-      
-      // Calculate network speed (bytes per second) using cached readings
-      let rx_per_sec = 0;
-      let tx_per_sec = 0;
-      const now = Date.now();
-      
-      if (_lastNet && _lastNetTime && net[0]) {
-        const elapsed = (now - _lastNetTime) / 1000; // seconds
-        if (elapsed > 0) {
-          rx_per_sec = Math.max(0, Math.round((net[0].rx_bytes - _lastNet[0].rx_bytes) / elapsed));
-          tx_per_sec = Math.max(0, Math.round((net[0].tx_bytes - _lastNet[0].tx_bytes) / elapsed));
-        }
-      }
-      
-      // Update cache
-      _lastNet = net;
-      _lastNetTime = now;
       
       // Get actual threat count (not blocked IPs)
       const threatStats = Threat.getStats();
@@ -73,9 +80,9 @@ class StatusController {
         ram: ramPercent,
         ram_used_gb: (actualUsed / 1073741824).toFixed(1),
         ram_total_gb: (mem.total / 1073741824).toFixed(1),
-        ram_cached_gb: ((mem.cached || 0) / 1073741824).toFixed(1),
-        net_rx: rx_per_sec,
-        net_tx: tx_per_sec,
+        ram_cached_gb: ((mem.buffcache || mem.cached || 0) / 1073741824).toFixed(1),
+        net_rx: netSpeed.rx_per_sec,
+        net_tx: netSpeed.tx_per_sec,
         threats: activeThreats,
         blocked_count: BlockedIP.size(),
         timestamp: Date.now()

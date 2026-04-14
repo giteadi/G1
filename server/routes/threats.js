@@ -7,7 +7,7 @@ const ThreatController = require('../controllers/ThreatController');
 router.get('/', ThreatController.getAllThreats);
 router.get('/stats', ThreatController.getStats);
 router.get('/recent', ThreatController.getRecentThreats);
-router.get('/scan', ThreatController.runScan);
+router.post('/scan', ThreatController.runScan);
 router.post('/clean', ThreatController.cleanThreats);
 router.get('/blocked', ThreatController.getBlockedIPs);
 router.post('/block', ThreatController.blockIP);

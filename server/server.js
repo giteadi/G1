@@ -22,6 +22,30 @@ const io = socketio(server, {
   }
 });
 
+// Network cache for socket.io metrics
+let _socketNetCache = null;
+let _socketNetTime = null;
+
+async function getSocketNetworkSpeed() {
+  const now = Date.now();
+  const net = await si.networkStats();
+
+  if (!_socketNetCache || !_socketNetTime || !net[0]) {
+    _socketNetCache = net;
+    _socketNetTime = now;
+    return { rx_per_sec: 0, tx_per_sec: 0 };
+  }
+
+  const elapsed = Math.max(0.5, (now - _socketNetTime) / 1000);
+  const rx_per_sec = Math.max(0, Math.round((net[0].rx_bytes - _socketNetCache[0].rx_bytes) / elapsed));
+  const tx_per_sec = Math.max(0, Math.round((net[0].tx_bytes - _socketNetCache[0].tx_bytes) / elapsed));
+
+  _socketNetCache = net;
+  _socketNetTime = now;
+
+  return { rx_per_sec, tx_per_sec };
+}
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   logger.info(`Client connected: ${socket.id}`);
@@ -34,15 +58,17 @@ io.on('connection', (socket) => {
   // Send metrics every 2 seconds
   const metricsInterval = setInterval(async () => {
     try {
-      const [cpu, mem, net, cpuInfo] = await Promise.all([
+      const [cpu, mem, cpuInfo, netSpeed] = await Promise.all([
         si.currentLoad(),
         si.mem(),
-        si.networkStats(),
-        si.cpu()
+        si.cpu(),
+        getSocketNetworkSpeed()
       ]);
 
-      // Calculate actual memory usage (excluding cached)
-      const actualUsed = (mem.active || 0) + (mem.wired || 0);
+      // Cross-platform memory calculation
+      const actualUsed = mem.available !== undefined 
+        ? mem.total - mem.available 
+        : mem.used;
       const ramPercent = Math.round((actualUsed / mem.total) * 100);
 
       // Get actual threat count
@@ -55,13 +81,15 @@ io.on('connection', (socket) => {
         ram: ramPercent,
         ram_used_gb: (actualUsed / 1073741824).toFixed(1),
         ram_total_gb: (mem.total / 1073741824).toFixed(1),
-        net_rx: net[0]?.rx_bytes || 0,
-        net_tx: net[0]?.tx_bytes || 0,
+        net_rx: netSpeed.rx_per_sec,
+        net_tx: netSpeed.tx_per_sec,
         threats: activeThreats,
         blocked_count: BlockedIP.size(),
         timestamp: Date.now()
       });
-    } catch (e) {}
+    } catch (e) {
+      logger.error(`Socket metrics error: ${e.message}`);
+    }
   }, 2000);
 
   // Handle scan request
