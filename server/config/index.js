@@ -9,6 +9,7 @@ const DATA_DIR = path.join(process.env.HOME || '/root', '.g1');
 // Default configuration
 const defaultConfig = {
   openai_key: process.env.OPENAI_API_KEY || '',
+  openai_project_id: process.env.OPENAI_PROJECT_ID || '',
   model: 'gpt-4o-mini',
   dashboard_port: 3000,
   monitor_interval: 30,
@@ -29,7 +30,13 @@ function loadConfig() {
 
     if (fs.existsSync(CONFIG_PATH)) {
       const userConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-      return { ...defaultConfig, ...userConfig };
+      // Env vars override config file
+      return { 
+        ...defaultConfig, 
+        ...userConfig,
+        openai_key: process.env.OPENAI_API_KEY || userConfig.openai_key || defaultConfig.openai_key,
+        openai_project_id: process.env.OPENAI_PROJECT_ID || userConfig.openai_project_id || defaultConfig.openai_project_id
+      };
     }
 
     // Create default config file if doesn't exist

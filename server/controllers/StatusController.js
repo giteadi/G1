@@ -5,6 +5,10 @@ const Threat = require('../models/Threat');
 const BlockedIP = require('../models/BlockedIP');
 const { loadConfig } = require('../config');
 
+// Cache for network speed calculation
+let _lastNet = null;
+let _lastNetTime = null;
+
 class StatusController {
   static async getStatus(req, res) {
     try {
@@ -37,11 +41,17 @@ class StatusController {
         si.fullLoad()
       ]);
 
+      // Calculate actual memory usage (excluding cached)
+      // active = apps using now, wired = OS reserved, cached = can be freed
+      const actualUsed = (mem.active || 0) + (mem.wired || 0);
+      const ramPercent = Math.round((actualUsed / mem.total) * 100);
+      
       res.json({
         cpu: Math.round(cpu.currentLoad),
-        ram: Math.round((mem.used / mem.total) * 100),
-        ram_used_gb: (mem.used / 1073741824).toFixed(1),
+        ram: ramPercent,
+        ram_used_gb: (actualUsed / 1073741824).toFixed(1),
         ram_total_gb: (mem.total / 1073741824).toFixed(1),
+        ram_cached_gb: ((mem.cached || 0) / 1073741824).toFixed(1),
         net_rx: net[0]?.rx_bytes || 0,
         net_tx: net[0]?.tx_bytes || 0,
         blocked_count: BlockedIP.size(),
@@ -88,6 +98,35 @@ class StatusController {
       });
     } catch (e) {
       res.status(500).json({ error: e.message });
+    }
+  }
+
+  static async updateConfig(req, res) {
+    try {
+      const { saveConfig, loadConfig } = require('../config');
+      const currentConfig = loadConfig();
+      const updates = req.body;
+      
+      // Merge updates with current config
+      const newConfig = { ...currentConfig, ...updates };
+      
+      if (saveConfig(newConfig)) {
+        res.json({
+          success: true,
+          message: 'Configuration updated',
+          config: newConfig
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: 'Failed to save configuration'
+        });
+      }
+    } catch (e) {
+      res.status(500).json({
+        success: false,
+        error: e.message
+      });
     }
   }
 }
