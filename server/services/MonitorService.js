@@ -25,16 +25,28 @@ class MonitorService {
     if (this.isRunning) return;
     this.isRunning = true;
 
-    logger.info('G1 Monitor started');
+    logger.info('G1 Monitor started — 24/7 Active');
 
-    // Monitor every 30 seconds
-    cron.schedule('*/30 * * * * *', () => this.monitorCycle());
+    // Lightweight check har 30 sec
+    cron.schedule('*/30 * * * * *', async () => {
+      await this.monitorCycle();
+    });
 
-    // Deep scan every 5 minutes
-    cron.schedule('*/5 * * * *', () => this.deepScan());
+    // Full deep scan har 5 min
+    cron.schedule('*/5 * * * *', async () => {
+      logger.info('Auto deep scan starting...');
+      const results = await this.deepScan();
+      await this.processAutoScanResults(results);
+    });
 
-    // Hourly baseline update
+    // Hourly baseline
     cron.schedule('0 * * * *', () => this.updateBaseline());
+
+    // Startup pe ek baar full scan
+    setTimeout(async () => {
+      const results = await this.deepScan();
+      await this.processAutoScanResults(results);
+    }, 5000);
   }
 
   stop() {
@@ -79,11 +91,20 @@ class MonitorService {
       si.processes()
     ]);
 
+    // Strict keywords - 'networkservice' and 'monero' removed to avoid false positives
     const suspiciousKeywords = [
-      'xmrig', 'minergate', 'cryptonight', 'monero', 'coinhive',
+      'xmrig', 'minergate', 'cryptonight', 'coinhive',
       'cpuminer', 'cgminer', 'ethminer', 'nicehash', 'claymore',
       'minerd', 'cryptominer', 'coin-hive', 'kworkerds', 'sysupdate',
-      'networkservice', 'watchbog'
+      'watchbog'
+    ];
+
+    // macOS system processes whitelist
+    const macosSystemProcs = [
+      'networkserviceproxy', 'trustd', 'syspolicyd', 'mobileassetd',
+      'coreauthd', 'secinitd', 'logd', 'configd', 'notifyd',
+      'diskarbitrationd', 'locationd', 'mediaanalysisd', 'tgondevice',
+      'useractivityd', 'apsd', 'symptomsd', 'wifid', 'bluetoothd'
     ];
 
     // Expanded whitelist - legitimate high CPU processes
@@ -96,12 +117,22 @@ class MonitorService {
 
     const suspiciousProcs = processes.list.filter(p => {
       const name = (p.name + ' ' + (p.command || '')).toLowerCase();
-      return suspiciousKeywords.some(k => name.includes(k));
+      
+      // macOS system process? Skip
+      if (macosSystemProcs.some(s => name.includes(s))) return false;
+      
+      // Strict word boundary match to avoid false positives
+      return suspiciousKeywords.some(k => {
+        const regex = new RegExp(`(^|[\\s/])${k}([\\s$]|$)`, 'i');
+        return regex.test(name);
+      });
     });
 
     const highCpuProcs = processes.list.filter(p =>
-      p.cpu > 80 && p.pid > 1000 &&
-      !legitimateProcs.some(s => p.name?.toLowerCase().includes(s))
+      p.cpu > 80 &&
+      p.pid > 1000 &&
+      !legitimateProcs.some(s => p.name?.toLowerCase().includes(s)) &&
+      !macosSystemProcs.some(s => p.name?.toLowerCase().includes(s))
     );
 
     for (const proc of suspiciousProcs) {
@@ -251,6 +282,36 @@ class MonitorService {
       });
     } catch (e) {
       logger.error(`updateBaseline error: ${e.message}`);
+    }
+  }
+
+  async processAutoScanResults(results) {
+    for (const result of results) {
+      if (!result || result.status === 'clean' || result.status === 'skipped') continue;
+
+      const isThreat = result.status === 'threat';
+      const isWarning = result.status === 'warning';
+
+      if ((isThreat || isWarning) && result.findings?.length > 0) {
+        // AI se analyze karwao
+        const aiResult = await this.brain.analyzeThreat({
+          type: `scan_${result.module}`,
+          module: result.module,
+          findings: result.findings,
+          status: result.status
+        });
+
+        if (aiResult.is_threat) {
+          this.saveThreat({
+            type: result.module,
+            severity: isThreat ? aiResult.severity : 'low',
+            message: result.message,
+            findings: result.findings,
+            ai_analysis: aiResult.analysis,
+            source: 'auto_scan'
+          });
+        }
+      }
     }
   }
 

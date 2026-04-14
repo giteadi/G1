@@ -15,7 +15,7 @@ const defaultConfig = {
   monitor_interval: 30,
   scan_interval: 300,
   auto_block: true,
-  auto_kill: false,
+  auto_kill: true,
   ddos_guard: true,
   malware_scan: true,
   phishing_guard: true,

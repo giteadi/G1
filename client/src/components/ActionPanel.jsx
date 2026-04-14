@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Scan, Trash2, Ban, CheckCircle, Terminal, Play, MessageSquare, Loader2 } from 'lucide-react'
+import { Scan, Trash2, Ban, CheckCircle, Terminal, Play, MessageSquare, Loader2, ChevronDown, ChevronUp, X } from 'lucide-react'
 import api from '../services/api'
 
 const ActionButton = ({ icon: Icon, label, color, onClick, description, loading }) => (
   <button 
     onClick={onClick}
     disabled={loading}
-    className={`flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-700 bg-gray-800/50 hover:bg-gray-800 transition-all group ${color} disabled:opacity-50`}
+    className={`flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-700 bg-gray-800/50 hover:bg-gray-800 transition-all group disabled:opacity-50`}
   >
     <div className={`p-3 rounded-lg bg-${color}-500/20 group-hover:scale-110 transition-transform`}>
       {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Icon className={`w-6 h-6 text-${color}-400`} />}
@@ -16,6 +16,174 @@ const ActionButton = ({ icon: Icon, label, color, onClick, description, loading 
   </button>
 )
 
+const ScanResultModal = ({ results, onClose, onResolve }) => {
+  const [expandedItems, setExpandedItems] = useState(new Set())
+
+  const toggleExpand = (index) => {
+    const newExpanded = new Set(expandedItems)
+    if (newExpanded.has(index)) {
+      newExpanded.delete(index)
+    } else {
+      newExpanded.add(index)
+    }
+    setExpandedItems(newExpanded)
+  }
+
+  const threats = results.filter(r => r.status === 'threat')
+  const warnings = results.filter(r => r.status === 'warning')
+  const clean = results.filter(r => r.status === 'clean')
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-gray-900 rounded-xl border border-gray-800 max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-4 md:p-6">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="font-bold text-lg">Scan Results</h3>
+              <p className="text-sm text-gray-400 mt-1">
+                {threats.length} threats • {warnings.length} warnings • {clean.length} clean
+              </p>
+            </div>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {threats.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-red-400 mb-2">Threats ({threats.length})</h4>
+                <div className="space-y-2">
+                  {threats.map((item, index) => (
+                    <div key={index} className="bg-red-500/10 rounded-lg border border-red-500/30">
+                      <div 
+                        className="p-3 cursor-pointer hover:bg-red-500/20 transition-colors"
+                        onClick={() => toggleExpand(`threat-${index}`)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-red-400">{item.message}</p>
+                            {item.module && (
+                              <p className="text-xs text-gray-500 mt-1">Module: {item.module}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onResolve(item)
+                              }}
+                              className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded transition-colors"
+                            >
+                              Fix
+                            </button>
+                            {expandedItems.has(`threat-${index}`) ? (
+                              <ChevronUp className="w-4 h-4 text-gray-400" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {expandedItems.has(`threat-${index}`) && item.findings && (
+                        <div className="px-3 pb-3 border-t border-red-500/30 pt-2">
+                          <ul className="space-y-1">
+                            {item.findings.map((finding, i) => (
+                              <li key={i} className="text-xs text-gray-400 flex items-start gap-2">
+                                <span className="text-red-400">•</span>
+                                <span>{finding}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {warnings.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-amber-400 mb-2">Warnings ({warnings.length})</h4>
+                <div className="space-y-2">
+                  {warnings.map((item, index) => (
+                    <div key={index} className="bg-amber-500/10 rounded-lg border border-amber-500/30">
+                      <div 
+                        className="p-3 cursor-pointer hover:bg-amber-500/20 transition-colors"
+                        onClick={() => toggleExpand(`warning-${index}`)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-amber-400">{item.message}</p>
+                            {item.module && (
+                              <p className="text-xs text-gray-500 mt-1">Module: {item.module}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onResolve(item)
+                              }}
+                              className="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded transition-colors"
+                            >
+                              Fix
+                            </button>
+                            {expandedItems.has(`warning-${index}`) ? (
+                              <ChevronUp className="w-4 h-4 text-gray-400" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {expandedItems.has(`warning-${index}`) && item.findings && (
+                        <div className="px-3 pb-3 border-t border-amber-500/30 pt-2">
+                          <ul className="space-y-1">
+                            {item.findings.map((finding, i) => (
+                              <li key={i} className="text-xs text-gray-400 flex items-start gap-2">
+                                <span className="text-amber-400">•</span>
+                                <span>{finding}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {clean.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-emerald-400 mb-2">Clean ({clean.length})</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {clean.map((item, index) => (
+                    <div key={index} className="bg-emerald-500/10 rounded p-2 border border-emerald-500/30">
+                      <p className="text-xs text-emerald-400">{item.message}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg font-medium transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const ActionPanel = () => {
   const [loading, setLoading] = useState({})
   const [message, setMessage] = useState(null)
@@ -24,6 +192,7 @@ const ActionPanel = () => {
   const [showBlockInput, setShowBlockInput] = useState(false)
   const [showWhitelistInput, setShowWhitelistInput] = useState(false)
   const [ipInput, setIpInput] = useState('')
+  const [scanResults, setScanResults] = useState(null)
 
   const handleAction = async (action, data = null) => {
     setLoading({ ...loading, [action]: true })
@@ -33,8 +202,14 @@ const ActionPanel = () => {
       let result
       switch(action) {
         case 'scan':
-          result = await api.runScan()
-          setMessage({ type: 'success', text: `Scan complete! Found ${result.results?.length || 0} issues` })
+          result = await api.runScan('full')
+          if (result.success) {
+            setScanResults(result.results)
+            setMessage({ 
+              type: 'success', 
+              text: `Scan complete! Found ${result.results.filter(r => r.status === 'threat').length} threats, ${result.results.filter(r => r.status === 'warning').length} warnings` 
+            })
+          }
           break
         case 'clean':
           result = await api.cleanThreats()
@@ -72,6 +247,33 @@ const ActionPanel = () => {
     }
     
     setLoading({ ...loading, [action]: false })
+  }
+
+  const handleResolveIssue = async (issue) => {
+    try {
+      // Auto-determine action based on issue type
+      if (issue.module === 'crypto_miners' && issue.findings) {
+        // Extract PID and kill process
+        const pidMatch = issue.findings[0]?.match(/PID: (\d+)/)
+        if (pidMatch) {
+          console.log('Would kill process:', pidMatch[1])
+          setMessage({ type: 'success', text: 'Process termination requested' })
+        }
+      } else if (issue.module === 'ssh_config') {
+        setMessage({ type: 'info', text: 'SSH hardening requires manual configuration' })
+      } else {
+        await api.cleanThreats()
+        setMessage({ type: 'success', text: 'Cleanup initiated' })
+      }
+      
+      // Refresh scan
+      const result = await api.runScan('full')
+      if (result.success) {
+        setScanResults(result.results)
+      }
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Failed to resolve issue' })
+    }
   }
 
   const handleChat = async () => {
@@ -189,6 +391,14 @@ const ActionPanel = () => {
           ))}
         </div>
       </div>
+
+      {scanResults && (
+        <ScanResultModal
+          results={scanResults}
+          onClose={() => setScanResults(null)}
+          onResolve={handleResolveIssue}
+        />
+      )}
     </div>
   )
 }

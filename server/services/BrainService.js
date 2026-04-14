@@ -102,8 +102,21 @@ class BrainService {
   }
 
   parseThreatStatus(analysis) {
-    const threatIndicators = ['threat detected', 'suspicious', 'malicious', 'attack', 'dangerous', 'block', 'high risk'];
-    return threatIndicators.some(ind => analysis.toLowerCase().includes(ind));
+    const lower = analysis.toLowerCase();
+    
+    // False positive indicators - these mean it's NOT a threat
+    const safeIndicators = [
+      'not a threat', 'false positive', 'legitimate', 'no threat', 
+      'benign', 'safe process', 'normal behavior', 'expected activity'
+    ];
+    if (safeIndicators.some(s => lower.includes(s))) return false;
+    
+    // Threat indicators - removed 'suspicious' as it's too generic
+    const threatIndicators = [
+      'threat detected', 'malicious', 'attack', 'dangerous', 
+      'block', 'high risk', 'crypto miner', 'brute force'
+    ];
+    return threatIndicators.some(ind => lower.includes(ind));
   }
 
   parseSeverity(analysis) {

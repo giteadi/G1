@@ -45,6 +45,9 @@ class StatusController {
         config: {
           auto_block: config.auto_block,
           auto_kill: config.auto_kill,
+          ddos_guard: config.ddos_guard,
+          malware_scan: config.malware_scan,
+          phishing_guard: config.phishing_guard,
           monitor_interval: config.monitor_interval
         }
       });

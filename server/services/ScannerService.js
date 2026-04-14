@@ -6,11 +6,21 @@ const si = require('systeminformation');
 class ScannerService {
   constructor(config) {
     this.config = config;
+    
+    // Strict keywords - 'networkservice' and 'monero' removed to avoid false positives
     this.suspiciousKeywords = [
-      'xmrig', 'minergate', 'cryptonight', 'monero', 'coinhive',
+      'xmrig', 'minergate', 'cryptonight', 'coinhive',
       'cpuminer', 'cgminer', 'ethminer', 'nicehash', 'claymore',
       'minerd', 'cryptominer', 'coin-hive', 'kworkerds', 'sysupdate',
-      'networkservice', 'watchbog'
+      'watchbog'
+    ];
+    
+    // macOS system processes whitelist
+    this.macosSystemProcs = [
+      'networkserviceproxy', 'trustd', 'syspolicyd', 'mobileassetd',
+      'coreauthd', 'secinitd', 'logd', 'configd', 'notifyd',
+      'diskarbitrationd', 'locationd', 'mediaanalysisd', 'tgondevice',
+      'useractivityd', 'apsd', 'symptomsd', 'wifid', 'bluetoothd'
     ];
   }
 
@@ -35,12 +45,28 @@ class ScannerService {
       const procs = await si.processes();
       procs.list.forEach(p => {
         const cmd = (p.name + ' ' + (p.command || '')).toLowerCase();
-        if (this.suspiciousKeywords.some(m => cmd.includes(m))) {
+        
+        // macOS system process? Skip
+        if (this.macosSystemProcs.some(s => cmd.includes(s))) return;
+        
+        // Strict word boundary match to avoid false positives
+        const isSuspicious = this.suspiciousKeywords.some(k => {
+          const regex = new RegExp(`(^|[\\s/])${k}([\\s$]|$)`, 'i');
+          return regex.test(cmd);
+        });
+        
+        if (isSuspicious) {
           findings.push(`Suspected miner: ${p.name} (PID: ${p.pid}, CPU: ${p.cpu}%)`);
         }
       });
 
-      const highCpu = procs.list.filter(p => p.cpu > 85 && p.pid > 1000);
+      // High CPU — but macOS system procs excluded
+      const highCpu = procs.list.filter(p =>
+        p.cpu > 85 &&
+        p.pid > 1000 &&
+        !this.macosSystemProcs.some(s => p.name?.toLowerCase().includes(s))
+      );
+      
       if (highCpu.length > 0) {
         findings.push(...highCpu.map(p => `High CPU process: ${p.name} (PID: ${p.pid}, ${p.cpu}%)`));
       }
