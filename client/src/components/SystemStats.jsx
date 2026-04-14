@@ -25,11 +25,12 @@ const StatCard = ({ icon: Icon, label, value, color, subtext, unit = '%', showBa
 )
 
 const SystemStats = ({ data }) => {
-  // Format network bytes to MB/s
+  // Format network bytes per second - shows appropriate unit (B/s, KB/s, MB/s)
   const formatNet = (bytes) => {
-    if (!bytes) return '0 MB/s'
-    const mb = (bytes / 1024 / 1024).toFixed(1)
-    return `${mb} MB/s`
+    if (!bytes || bytes === 0) return '0 KB/s'
+    if (bytes < 1024) return `${bytes} B/s`
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB/s`
+    return `${(bytes / 1048576).toFixed(1)} MB/s`
   }
 
   // Format RAM with actual GB values from server
@@ -68,11 +69,11 @@ const SystemStats = ({ data }) => {
     { 
       icon: AlertCircle, 
       label: 'Active Threats', 
-      value: data.threats, 
+      value: data.threats || 0, 
       color: 'bg-red-500/20', 
-      subtext: 'Blocked attempts',
-      unit: '%',
-      showBar: data.threats > 0  // Sirf threats hone pe bar
+      subtext: 'Detected threats',
+      unit: '',
+      showBar: false
     },
   ]
 

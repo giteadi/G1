@@ -48,7 +48,7 @@ function App() {
         ram_total_gb: data.ram_total_gb,
         net_rx: data.net_rx || 0,
         net_tx: data.net_tx || 0,
-        threats: data.blocked_count || 0
+        threats: data.threats || 0
       })
     })
 
@@ -68,7 +68,6 @@ function App() {
       if (result) {
         const threats = Array.isArray(result) ? result : []
         setThreatStats({ count: threats.length, recent: threats.slice(0, 5) })
-        setSystemData(prev => ({ ...prev, threats: threats.length }))
       }
     }
     fetchThreatStats()

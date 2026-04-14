@@ -15,6 +15,10 @@ class MonitorService {
     this.knownSuspiciousProcs = new Set();
     this.recentEvents = [];
     this.isRunning = false;
+    
+    // Network delta cache
+    this._lastNet = null;
+    this._lastNetTime = null;
   }
 
   start() {
@@ -48,6 +52,27 @@ class MonitorService {
     }
   }
 
+  // Network speed - cached delta (no delay needed)
+  async getNetworkSpeed() {
+    const now = Date.now();
+    const net = await si.networkStats();
+
+    if (!this._lastNet || !this._lastNetTime) {
+      this._lastNet = net;
+      this._lastNetTime = now;
+      return { rx_per_sec: 0, tx_per_sec: 0 };
+    }
+
+    const elapsed = Math.max(1, (now - this._lastNetTime) / 1000); // seconds
+    const rx_per_sec = Math.max(0, (net[0]?.rx_bytes - this._lastNet[0]?.rx_bytes) / elapsed);
+    const tx_per_sec = Math.max(0, (net[0]?.tx_bytes - this._lastNet[0]?.tx_bytes) / elapsed);
+
+    this._lastNet = net;
+    this._lastNetTime = now;
+
+    return { rx_per_sec, tx_per_sec };
+  }
+
   async checkCryptoMining() {
     const [cpu, processes] = await Promise.all([
       si.currentLoad(),
@@ -61,6 +86,14 @@ class MonitorService {
       'networkservice', 'watchbog'
     ];
 
+    // Expanded whitelist - legitimate high CPU processes
+    const legitimateProcs = [
+      'node', 'python', 'python3', 'java', 'nginx', 'apache',
+      'apache2', 'mysql', 'mysqld', 'postgres', 'ruby', 'php',
+      'redis', 'mongodb', 'elasticsearch', 'webpack', 'tsc',
+      'cargo', 'rustc', 'gcc', 'clang', 'make', 'cmake'
+    ];
+
     const suspiciousProcs = processes.list.filter(p => {
       const name = (p.name + ' ' + (p.command || '')).toLowerCase();
       return suspiciousKeywords.some(k => name.includes(k));
@@ -68,7 +101,7 @@ class MonitorService {
 
     const highCpuProcs = processes.list.filter(p =>
       p.cpu > 80 && p.pid > 1000 &&
-      !['node', 'python', 'java', 'nginx', 'apache', 'mysql', 'postgres'].some(s => p.name?.includes(s))
+      !legitimateProcs.some(s => p.name?.toLowerCase().includes(s))
     );
 
     for (const proc of suspiciousProcs) {
@@ -118,7 +151,10 @@ class MonitorService {
 
   async checkBruteForce() {
     try {
-      const authLog = require('child_process').execSync('tail -100 /var/log/auth.log 2>/dev/null || echo ""').toString();
+      const authLog = require('child_process')
+        .execSync('tail -100 /var/log/auth.log 2>/dev/null || echo ""')
+        .toString();
+      
       const failedAttempts = authLog.match(/Failed password/g) || [];
       
       if (failedAttempts.length > 10) {
@@ -154,33 +190,40 @@ class MonitorService {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      logger.error(`checkBruteForce error: ${e.message}`);
+    }
   }
 
   async checkDDoS() {
     try {
-      const net = await si.networkStats();
-      const connections = await si.networkConnections();
+      const [connections, { rx_per_sec }] = await Promise.all([
+        si.networkConnections(),
+        this.getNetworkSpeed()  // actual per-second speed
+      ]);
       
-      if (connections.length > 1000 || net[0]?.rx_sec > 100000000) {
+      // 100 MB/s threshold for DDoS
+      if (connections.length > 1000 || rx_per_sec > 100_000_000) {
         const aiResult = await this.brain.analyzeThreat({
           type: 'ddos_suspected',
           connection_count: connections.length,
-          rx_bytes_sec: net[0]?.rx_sec
+          rx_bytes_sec: rx_per_sec  // actual speed, not cumulative
         });
 
         if (aiResult.is_threat) {
           this.saveThreat({
             type: 'ddos',
             severity: 'critical',
-            message: `Potential DDoS: ${connections.length} connections`,
+            message: `Potential DDoS: ${connections.length} connections, ${(rx_per_sec / 1_000_000).toFixed(1)} MB/s`,
             connection_count: connections.length,
-            rx_bytes_sec: net[0]?.rx_sec,
+            rx_bytes_sec: rx_per_sec,
             ai_analysis: aiResult.analysis
           });
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      logger.error(`checkDDoS error: ${e.message}`);
+    }
   }
 
   async deepScan() {
@@ -197,11 +240,14 @@ class MonitorService {
       ]);
 
       Memory.updateBaseline({
-        cpu_avg: cpu.currentLoad,
-        ram_avg: (mem.used / mem.total) * 100,
+        cpu_avg: Math.round(cpu.currentLoad),
+        // Sahi RAM: active + wired only (cached exclude)
+        ram_avg: Math.round(((mem.active + mem.wired) / mem.total) * 100),
         last_updated: new Date().toISOString()
       });
-    } catch (e) {}
+    } catch (e) {
+      logger.error(`updateBaseline error: ${e.message}`);
+    }
   }
 
   saveThreat(threatData) {

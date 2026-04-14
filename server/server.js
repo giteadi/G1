@@ -41,14 +41,23 @@ io.on('connection', (socket) => {
         si.cpu()
       ]);
 
+      // Calculate actual memory usage (excluding cached)
+      const actualUsed = (mem.active || 0) + (mem.wired || 0);
+      const ramPercent = Math.round((actualUsed / mem.total) * 100);
+
+      // Get actual threat count
+      const threatStats = Threat.getStats();
+      const activeThreats = threatStats.total || 0;
+
       socket.emit('metrics', {
         cpu: Math.round(cpu.currentLoad),
         cpu_cores: cpuInfo.cores || 8,
-        ram: Math.round((mem.used / mem.total) * 100),
-        ram_used_gb: (mem.used / 1073741824).toFixed(1),
+        ram: ramPercent,
+        ram_used_gb: (actualUsed / 1073741824).toFixed(1),
         ram_total_gb: (mem.total / 1073741824).toFixed(1),
         net_rx: net[0]?.rx_bytes || 0,
         net_tx: net[0]?.tx_bytes || 0,
+        threats: activeThreats,
         blocked_count: BlockedIP.size(),
         timestamp: Date.now()
       });

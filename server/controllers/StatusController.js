@@ -34,10 +34,11 @@ class StatusController {
 
   static async getMetrics(req, res) {
     try {
-      const [cpu, mem, net] = await Promise.all([
+      const [cpu, mem, net, cpuInfo] = await Promise.all([
         si.currentLoad(),
         si.mem(),
-        si.networkStats()
+        si.networkStats(),
+        si.cpu()
       ]);
 
       // Calculate actual memory usage (excluding cached)
@@ -62,14 +63,20 @@ class StatusController {
       _lastNet = net;
       _lastNetTime = now;
       
+      // Get actual threat count (not blocked IPs)
+      const threatStats = Threat.getStats();
+      const activeThreats = threatStats.total || 0;
+      
       res.json({
         cpu: Math.round(cpu.currentLoad),
+        cpu_cores: cpuInfo.cores || 8,
         ram: ramPercent,
         ram_used_gb: (actualUsed / 1073741824).toFixed(1),
         ram_total_gb: (mem.total / 1073741824).toFixed(1),
         ram_cached_gb: ((mem.cached || 0) / 1073741824).toFixed(1),
         net_rx: rx_per_sec,
         net_tx: tx_per_sec,
+        threats: activeThreats,
         blocked_count: BlockedIP.size(),
         timestamp: Date.now()
       });
