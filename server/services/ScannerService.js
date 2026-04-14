@@ -2,10 +2,14 @@
 
 const { execSync } = require('child_process');
 const si = require('systeminformation');
+const CryptoDetector = require('./CryptoDetector');
+const ServerProtection = require('./ServerProtection');
 
 class ScannerService {
   constructor(config) {
     this.config = config;
+    this.cryptoDetector = new CryptoDetector(config);
+    this.serverProtection = new ServerProtection(config);
     
     // Strict keywords - 'networkservice' and 'monero' removed to avoid false positives
     this.suspiciousKeywords = [
@@ -24,21 +28,54 @@ class ScannerService {
     ];
   }
 
-  async fullScan(deep = false) {
-    const results = await Promise.allSettled([
-      this.checkCryptoMiners(),
-      this.checkRootkit(),
-      this.checkSuspiciousCrons(),
-      this.checkOpenPorts(),
-      this.checkSuspiciousSudoers(),
-      this.checkSSHConfig(),
-      this.checkWorldWritable(),
-      this.checkPrivacyLeaks(),
-      this.checkDarkWebConnections(),
+  async fullScan(deep = false, type = 'full') {
+    const baseChecks = [
+      type === 'full' || type === 'crypto' ? this.cryptoDetector.detect() : null,
+      type === 'full' || type === 'rootkit' ? this.checkRootkit() : null,
+      type === 'full' || type === 'cron' ? this.checkSuspiciousCrons() : null,
+      type === 'full' || type === 'ports' ? this.checkOpenPorts() : null,
+      type === 'full' ? this.checkSuspiciousSudoers() : null,
+      type === 'full' || type === 'ssh' ? this.checkSSHConfig() : null,
+      type === 'full' ? this.checkWorldWritable() : null,
+      type === 'full' || type === 'privacy' ? this.checkPrivacyLeaks() : null,
+      type === 'full' || type === 'darkweb' ? this.checkDarkWebConnections() : null,
+      type === 'full' || type === 'protection' ? this.checkServerProtection() : null,
       deep ? this.checkHiddenProcesses() : Promise.resolve({ module: 'hidden_processes', status: 'skipped', message: 'Use --deep to run' })
-    ]);
+    ].filter(Boolean);
 
+    const results = await Promise.allSettled(baseChecks);
     return results.map(r => r.status === 'fulfilled' ? r.value : { module: 'error', status: 'error', message: r.reason?.message });
+  }
+
+  async checkServerProtection() {
+    const findings = [];
+    try {
+      const status = await this.serverProtection.checkProtectionStatus();
+
+      if (!status.firewall) {
+        findings.push('Firewall is not enabled');
+      }
+      if (!status.fail2ban) {
+        findings.push('Fail2ban intrusion prevention is not active');
+      }
+      if (!status.ssh_hardened) {
+        findings.push('SSH configuration needs hardening');
+      }
+      if (!status.intrusion_detection) {
+        findings.push('Intrusion detection tools not installed');
+      }
+
+      const vulns = await this.serverProtection.scanForVulnerabilities();
+      findings.push(...vulns.map(v => `${v.type}: ${v.message}`));
+
+    } catch (e) {}
+
+    return {
+      module: 'server_protection',
+      status: findings.length ? 'warning' : 'clean',
+      message: findings.length ? `${findings.length} protection issue(s) found` : 'Server protection looks good',
+      findings
+    };
   }
 
   async checkCryptoMiners() {
@@ -193,15 +230,46 @@ class ScannerService {
   async checkPrivacyLeaks() {
     const findings = [];
     try {
+      // macOS system processes whitelist - comprehensive list
+      const macosSystemProcs = [
+        // Apple system services
+        'callserviced', 'callservi',
+        'corespeechd', 'corespeec',
+        'powerchime', 'powerchim',
+        'coreaudiod', 'coreaudio',
+        'appleh264', 'appleh26',
+        'avfoundation', 'avfoundat',
+        'usernoted', 'usernotif', 'notificat',
+        'imagent', 'imavagent',
+        'com.apple', 'apple.',
+        'controlce', 'controlcenter',
+        'windowser', 'windowserver',
+        'kernel_ta', 'kernel',
+        'systemsta', 'systemstats',
+        // Legitimate apps
+        'facetime', 'quicktime', 'music', 'safari',
+        'spotify', 'zoom', 'teams', 'slack', 'discord',
+        'chrome', 'firefox', 'skype', 'webex', 'google', 'microsoft'
+      ];
+
       // Mic/Camera access check - macOS
       const audioCheck = execSync(
-        'lsof 2>/dev/null | grep -iE "coreaudio|AppleHDA|iSight|FaceTime|avfoundation" | grep -vE "Google|Spotify|Zoom|Teams|FaceTime|Music|QuickTime" || true'
+        'lsof 2>/dev/null | grep -iE "coreaudio|AppleHDA|iSight|FaceTime|avfoundation" 2>/dev/null || true'
       ).toString().trim();
       
       if (audioCheck) {
         audioCheck.split('\n').filter(Boolean).forEach(line => {
-          const procName = line.split(/\s+/)[0];
-          findings.push(`Unexpected mic/camera access: ${procName}`);
+          const procName = line.split(/\s+/)[0]?.toLowerCase() || '';
+          
+          // Skip if it's a known system process (check for partial matches)
+          if (macosSystemProcs.some(sys => procName.includes(sys) || sys.includes(procName.substring(0, 8)))) {
+            return;
+          }
+          
+          // Skip if it's empty or too short
+          if (procName.length < 3) return;
+          
+          findings.push(`Unexpected mic/camera access: ${line.split(/\s+/)[0]}`);
         });
       }
 
@@ -212,6 +280,15 @@ class ScannerService {
       
       if (linuxAudio) {
         linuxAudio.split('\n').filter(Boolean).forEach(line => {
+          const procName = line.split(/\s+/)[0]?.toLowerCase() || '';
+          
+          // Skip known system processes
+          if (macosSystemProcs.some(sys => procName.includes(sys) || sys.includes(procName.substring(0, 8)))) {
+            return;
+          }
+          
+          if (procName.length < 3) return;
+          
           findings.push(`Audio device access: ${line.split(/\s+/)[0]}`);
         });
       }

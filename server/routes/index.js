@@ -8,11 +8,15 @@ const threatRoutes = require('./threats');
 const chatRoutes = require('./chat');
 const learningRoutes = require('./learning');
 const scanRoutes = require('./scan');
+const protectionRoutes = require('./protection');
+const securityRoutes = require('./security');
 
 router.use('/status', statusRoutes);
 router.use('/threats', threatRoutes);
 router.use('/chat', chatRoutes);
 router.use('/learning', learningRoutes);
 router.use('/scan', scanRoutes);
+router.use('/protection', protectionRoutes);
+router.use('/security', securityRoutes);
 
 module.exports = router;

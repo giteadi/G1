@@ -9,9 +9,12 @@ router.get('/stats', ThreatController.getStats);
 router.get('/recent', ThreatController.getRecentThreats);
 router.post('/scan', ThreatController.runScan);
 router.post('/clean', ThreatController.cleanThreats);
+router.post('/clear-all', ThreatController.clearAllThreats);
+router.post('/clear-type', ThreatController.clearThreatsByType);
 router.get('/blocked', ThreatController.getBlockedIPs);
 router.post('/block', ThreatController.blockIP);
 router.post('/unblock', ThreatController.unblockIP);
+router.post('/kill', ThreatController.killProcess);
 router.get('/:id', ThreatController.getThreatById);
 router.post('/:id/clean', ThreatController.markCleaned);
 

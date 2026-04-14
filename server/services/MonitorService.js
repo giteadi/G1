@@ -7,6 +7,9 @@ const BlockedIP = require('../models/BlockedIP');
 const Memory = require('../models/Memory');
 const BrainService = require('./BrainService');
 const WhatsAppService = require('./WhatsAppService');
+const CryptoDetector = require('./CryptoDetector');
+const ServerProtection = require('./ServerProtection');
+const SecurityModules = require('./SecurityModules');
 const logger = require('../utils/logger');
 
 class MonitorService {
@@ -14,10 +17,14 @@ class MonitorService {
     this.config = config;
     this.brain = new BrainService(config);
     this.whatsapp = new WhatsAppService(config);
+    this.cryptoDetector = new CryptoDetector(config);
+    this.serverProtection = new ServerProtection(config);
+    this.securityModules = new SecurityModules(config);
     this.knownSuspiciousProcs = new Set();
     this.recentEvents = [];
     this.isRunning = false;
-    
+    this.protectionAlerts = [];
+
     // Network delta cache
     this._lastNet = null;
     this._lastNetTime = null;
@@ -58,12 +65,112 @@ class MonitorService {
 
   async monitorCycle() {
     try {
-      await this.checkCryptoMining();
+      await this.checkAdvancedCryptoMining();
       await this.checkBruteForce();
       await this.checkDDoS();
       await this.checkOutboundSurveillance();
+      await this.checkSystemProtection();
+      await this.checkVulnerabilities();
+      await this.checkSecurityModules(); // Production-level scans
     } catch (e) {
       logger.error(`Monitor cycle error: ${e.message}`);
+    }
+  }
+
+  async checkAdvancedCryptoMining() {
+    try {
+      const detection = await this.cryptoDetector.detect();
+
+      if (detection.status === 'threat' && detection.findings?.length) {
+        for (const finding of detection.findings) {
+          const aiResult = await this.brain.analyzeThreat({
+            type: 'advanced_crypto_detection',
+            process_name: finding.process,
+            pid: finding.pid,
+            cpu_usage: finding.cpu,
+            indicators: finding.indicators,
+            confidence: detection.confidence,
+            behaviors: detection.behaviors
+          });
+
+          if (aiResult.is_threat && finding.pid && !this.knownSuspiciousProcs.has(finding.pid)) {
+            this.knownSuspiciousProcs.add(finding.pid);
+
+            this.saveThreat({
+              type: 'crypto_mining_advanced',
+              severity: aiResult.severity,
+              message: finding.message,
+              process_name: finding.process,
+              pid: finding.pid,
+              cpu_usage: finding.cpu,
+              indicators: finding.indicators,
+              confidence: detection.confidence,
+              ai_analysis: aiResult.analysis
+            });
+
+            if (aiResult.recommended_action === 'kill_process' && this.config.auto_kill !== false) {
+              if (aiResult.severity === 'critical') {
+                await this.cryptoDetector.terminateProcess(finding.pid);
+              } else {
+                await this.cryptoDetector.isolateProcess(finding.pid);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      logger.error(`Advanced crypto check error: ${e.message}`);
+    }
+  }
+
+  async checkSystemProtection() {
+    try {
+      const status = await this.serverProtection.checkProtectionStatus();
+      const protectionLevel = this.serverProtection.calculateProtectionLevel();
+
+      if (protectionLevel === 'none' || protectionLevel === 'low') {
+        if (!this.protectionAlerts.includes('low_protection')) {
+          this.saveThreat({
+            type: 'system_protection_low',
+            severity: 'high',
+            message: `Server protection level is ${protectionLevel}. Enable firewall, fail2ban, and SSH hardening.`,
+            protection_status: status,
+            recommendations: [
+              'Enable firewall: POST /api/protection/firewall/enable',
+              'Enable fail2ban: POST /api/protection/fail2ban/enable',
+              'Harden SSH: POST /api/protection/ssh/harden'
+            ]
+          });
+          this.protectionAlerts.push('low_protection');
+        }
+      }
+    } catch (e) {
+      logger.error(`System protection check error: ${e.message}`);
+    }
+  }
+
+  async checkVulnerabilities() {
+    try {
+      const vulns = await this.serverProtection.scanForVulnerabilities();
+
+      for (const vuln of vulns) {
+        const existingThreat = this.recentEvents.find(e =>
+          e.type === 'vulnerability' &&
+          e.message?.includes(vuln.type) &&
+          Date.now() - new Date(e.timestamp).getTime() < 24 * 60 * 60 * 1000
+        );
+
+        if (!existingThreat) {
+          this.saveThreat({
+            type: 'vulnerability',
+            severity: vuln.severity,
+            message: vuln.message,
+            details: vuln
+          });
+        }
+      }
+    } catch (e) {
+      logger.error(`Vulnerability check error: ${e.message}`);
     }
   }
 
@@ -291,10 +398,10 @@ class MonitorService {
     }
   }
 
-  async deepScan() {
+  async deepScan(type = 'full') {
     const ScannerService = require('./ScannerService');
     const scanner = new ScannerService(this.config);
-    return scanner.fullScan(true);
+    return scanner.fullScan(true, type);
   }
 
   async updateBaseline() {
@@ -368,7 +475,11 @@ class MonitorService {
     const autoResolvableTypes = [
       'darkweb_connections',
       'suspicious_outbound',
-      'crypto_mining'
+      'crypto_mining',
+      'crypto_miner',        // SecurityModules
+      'brute_force',          // SecurityModules
+      'ddos',                 // SecurityModules
+      'darkweb_c2'            // SecurityModules
     ];
     
     if (
@@ -401,6 +512,73 @@ class MonitorService {
 
   getRecentEvents(limit = 20) {
     return this.recentEvents.slice(-limit).reverse();
+  }
+
+  // Production-level Security Modules monitoring
+  async checkSecurityModules() {
+    try {
+      const scan = await this.securityModules.masterScan();
+
+      // Process Level 3 threats (Attack)
+      for (const threat of scan.threats) {
+        const threatKey = `${threat.type}-${threat.pid || threat.attacker_ip || threat.port}`;
+
+        if (!this.knownSuspiciousProcs.has(threatKey)) {
+          this.knownSuspiciousProcs.add(threatKey);
+
+          // Map level to severity
+          const severity = threat.level === 3 ? 'critical' : threat.level === 2 ? 'high' : 'medium';
+
+          this.saveThreat({
+            type: threat.type,
+            severity,
+            level: threat.level,
+            message: threat.message || `${threat.type} detected (Level ${threat.level})`,
+            indicators: threat.indicators,
+            resolve_commands: threat.resolve_commands,
+            process_name: threat.process,
+            pid: threat.pid,
+            attacker_ip: threat.attacker_ip,
+            port: threat.port,
+            source: 'security_modules'
+          });
+
+          // Auto-resolve Level 3 threats if enabled
+          if (threat.level === 3 && this.config.auto_remediate) {
+            try {
+              const result = await this.securityModules.resolveThreat(threat);
+              logger.warn(`Auto-resolved Level 3 threat: ${threat.type} - ${result.action}`);
+            } catch (e) {
+              logger.error(`Auto-resolve failed: ${e.message}`);
+            }
+          }
+        }
+      }
+
+      // Process Level 2 warnings
+      for (const warning of scan.warnings) {
+        const existing = this.recentEvents.find(e =>
+          e.type === warning.type &&
+          Date.now() - new Date(e.timestamp).getTime() < 60 * 60 * 1000 // 1 hour
+        );
+
+        if (!existing) {
+          this.saveThreat({
+            type: warning.type,
+            severity: 'medium',
+            level: warning.level,
+            message: warning.message || `${warning.type} warning (Level ${warning.level})`,
+            indicators: warning.indicators,
+            resolve_commands: warning.resolve_commands,
+            source: 'security_modules'
+          });
+        }
+      }
+
+      return scan;
+    } catch (e) {
+      logger.error(`Security modules check error: ${e.message}`);
+    }
   }
 }
 

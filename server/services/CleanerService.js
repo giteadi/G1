@@ -3,11 +3,15 @@
 const { execSync } = require('child_process');
 const Threat = require('../models/Threat');
 const BlockedIP = require('../models/BlockedIP');
+const CryptoDetector = require('./CryptoDetector');
+const ServerProtection = require('./ServerProtection');
 const logger = require('../utils/logger');
 
 class CleanerService {
   constructor(config) {
     this.config = config;
+    this.cryptoDetector = new CryptoDetector(config);
+    this.serverProtection = new ServerProtection(config);
   }
 
   async clean(force = false) {
@@ -32,20 +36,11 @@ class CleanerService {
       switch (threat.type) {
         case 'crypto_mining':
         case 'crypto_mining_suspected':
-          if (threat.pid) {
-            execSync(`kill -9 ${threat.pid} 2>/dev/null || true`);
-            logger.warn(`Killed miner process PID ${threat.pid}`);
-            return { success: true, action: `Killed miner process PID ${threat.pid}` };
-          }
-          return { success: true, action: 'Crypto mining threat logged' };
+        case 'crypto_mining_advanced':
+          return await this.resolveCryptoMiner(threat, force);
 
         case 'brute_force':
-          if (threat.attacker_ip) {
-            BlockedIP.add(threat.attacker_ip, this.config.whitelist_ips);
-            logger.warn(`Blocked attacker IP: ${threat.attacker_ip}`);
-            return { success: true, action: `Blocked attacker IP: ${threat.attacker_ip}` };
-          }
-          return { success: true, action: 'Brute force threat logged' };
+          return await this.resolveBruteForce(threat, force);
 
         case 'suspicious_outbound':
           return await this.resolveOutbound(threat, force);
@@ -57,18 +52,16 @@ class CleanerService {
           return await this.resolveDarkWeb(threat, force);
 
         case 'suspicious_connection':
-          if (threat.attacker_ip) {
-            BlockedIP.add(threat.attacker_ip, this.config.whitelist_ips);
-            return { success: true, action: `Blocked suspicious IP: ${threat.attacker_ip}` };
-          }
-          return { success: true, action: 'Connection threat logged' };
+          return await this.resolveSuspiciousConnection(threat, force);
 
         case 'high_cpu_process':
-          if (threat.pid && force) {
-            execSync(`kill -9 ${threat.pid} 2>/dev/null || true`);
-            return { success: true, action: `Killed high CPU process PID ${threat.pid}` };
-          }
-          return { success: true, action: `High CPU process logged (PID: ${threat.pid})` };
+          return await this.resolveHighCpuProcess(threat, force);
+
+        case 'vulnerability':
+          return await this.resolveVulnerability(threat);
+
+        case 'system_protection_low':
+          return await this.resolveLowProtection(threat);
 
         default:
           return { success: true, action: `Threat ${threat.type} marked as reviewed` };
@@ -77,6 +70,107 @@ class CleanerService {
       logger.error(`Failed to handle ${threat.type}: ${e.message}`);
       return { success: false, action: `Failed to handle ${threat.type}`, error: e.message };
     }
+  }
+
+  async resolveCryptoMiner(threat, force) {
+    const results = [];
+
+    if (threat.pid) {
+      if (threat.severity === 'critical' || force) {
+        const killResult = await this.cryptoDetector.terminateProcess(threat.pid);
+        results.push(killResult.action);
+      } else {
+        const isolateResult = await this.cryptoDetector.isolateProcess(threat.pid);
+        results.push(isolateResult.action);
+      }
+
+      if (threat.indicators?.includes('cron_backdoor')) {
+        try {
+          execSync('crontab -r 2>/dev/null || true');
+          results.push('user_crontab_cleared');
+        } catch {}
+      }
+    }
+
+    if (threat.findings?.length) {
+      const filesToRemove = threat.findings
+        .filter(f => f.type === 'suspicious_executable')
+        .map(f => f.path);
+
+      if (filesToRemove.length) {
+        const removeResult = await this.cryptoDetector.removeFiles(filesToRemove);
+        results.push(`removed_${removeResult.filter(r => r.removed).length}_files`);
+      }
+    }
+
+    logger.warn(`Resolved crypto miner: PID ${threat.pid} - ${results.join(', ')}`);
+    return { success: true, action: results.join(' | ') || 'Crypto miner threat logged' };
+  }
+
+  async resolveBruteForce(threat, force) {
+    if (threat.attacker_ip) {
+      const result = await this.serverProtection.blockIP(threat.attacker_ip, 'brute_force');
+      await this.serverProtection.enableFail2ban();
+      logger.warn(`Blocked attacker IP: ${threat.attacker_ip}`);
+      return { success: result.success, action: `Blocked attacker IP: ${threat.attacker_ip}` };
+    }
+    return { success: true, action: 'Brute force threat logged' };
+  }
+
+  async resolveSuspiciousConnection(threat, force) {
+    if (threat.attacker_ip) {
+      await this.serverProtection.blockIP(threat.attacker_ip, 'suspicious_connection');
+
+      if (force && threat.pid) {
+        await this.serverProtection.isolateNetwork(threat.pid);
+      }
+
+      return { success: true, action: `Blocked suspicious IP: ${threat.attacker_ip}` };
+    }
+    return { success: true, action: 'Connection threat logged' };
+  }
+
+  async resolveHighCpuProcess(threat, force) {
+    if (threat.pid && force) {
+      const result = await this.cryptoDetector.terminateProcess(threat.pid);
+      return { success: result.success, action: `Killed high CPU process PID ${threat.pid}` };
+    }
+    return { success: true, action: `High CPU process logged (PID: ${threat.pid})` };
+  }
+
+  async resolveVulnerability(threat) {
+    const results = [];
+
+    if (threat.details?.type === 'dangerous_port_exposed') {
+      for (const port of threat.details.ports || []) {
+        try {
+          execSync(`iptables -A INPUT -p tcp --dport ${port} -j DROP 2>/dev/null || true`);
+          results.push(`blocked_port_${port}`);
+        } catch {}
+      }
+    }
+
+    if (threat.details?.type === 'world_writable_system_files') {
+      results.push('manual_review_required: World-writable system files detected');
+    }
+
+    return { success: true, action: results.join(' | ') || 'Vulnerability logged for review' };
+  }
+
+  async resolveLowProtection(threat) {
+    const results = [];
+
+    try {
+      const fwResult = await this.serverProtection.enableFirewall();
+      if (fwResult.success) results.push('firewall_enabled');
+    } catch {}
+
+    try {
+      const f2bResult = await this.serverProtection.enableFail2ban();
+      if (f2bResult.success) results.push('fail2ban_enabled');
+    } catch {}
+
+    return { success: results.length > 0, action: results.join(' | ') || 'Auto-protection applied' };
   }
 
   // Suspicious outbound connection resolve

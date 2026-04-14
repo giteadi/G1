@@ -1,5 +1,8 @@
 'use strict';
 
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 const Threat = require('../models/Threat');
 const BlockedIP = require('../models/BlockedIP');
 const ScannerService = require('../services/ScannerService');
@@ -53,40 +56,17 @@ class ThreatController {
       const config = loadConfig();
       const scanner = new ScannerService(config);
       const deep = req.query.deep === 'true';
-      const type = req.query.type || 'full'; // crypto, brute_force, ddos, malware, phishing, full
-      
-      const results = await scanner.fullScan(deep);
-      
-      // Filter results by type if specified
-      let filteredResults = results;
-      if (type !== 'full') {
-        filteredResults = results.filter(r => {
-          const msg = r.message?.toLowerCase() || '';
-          switch(type) {
-            case 'crypto':
-              return msg.includes('process') || msg.includes('cpu') || msg.includes('miner');
-            case 'brute_force':
-              return msg.includes('ssh') || msg.includes('auth') || msg.includes('login');
-            case 'ddos':
-              return msg.includes('port') || msg.includes('connection') || msg.includes('network');
-            case 'malware':
-              return msg.includes('rootkit') || msg.includes('malware') || msg.includes('suspicious');
-            case 'phishing':
-              return msg.includes('domain') || msg.includes('url') || msg.includes('phishing');
-            default:
-              return true;
-          }
-        });
-      }
-      
+      const type = req.query.type || 'full'; // crypto, rootkit, cron, ports, ssh, privacy, darkweb, protection, full
+
+      const results = await scanner.fullScan(deep, type);
+
       res.json({
         success: true,
         timestamp: new Date().toISOString(),
         scan_type: type,
         deep,
         total_checks: results.length,
-        filtered_results: filteredResults.length,
-        results: filteredResults
+        results
       });
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -166,6 +146,69 @@ class ThreatController {
     try {
       const ips = BlockedIP.getAll();
       res.json({ count: ips.length, ips });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+
+  static async clearAllThreats(req, res) {
+    try {
+      const result = Threat.clearAll();
+      res.json({
+        success: true,
+        message: 'All threats cleared from database',
+        ...result
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+
+  static async clearThreatsByType(req, res) {
+    try {
+      const { type } = req.body;
+      if (!type) {
+        return res.status(400).json({ error: 'Threat type required' });
+      }
+      
+      const result = Threat.clearByType(type);
+      res.json({
+        success: true,
+        message: `All ${type} threats cleared`,
+        ...result
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+
+  static async killProcess(req, res) {
+    try {
+      const { pid } = req.body;
+      if (!pid) {
+        return res.status(400).json({ error: 'PID required' });
+      }
+
+      // Validate PID is a number
+      const processId = parseInt(pid);
+      if (isNaN(processId) || processId <= 0) {
+        return res.status(400).json({ error: 'Invalid PID' });
+      }
+
+      try {
+        // Try to kill the process
+        await execPromise(`kill -9 ${processId}`);
+        res.json({
+          success: true,
+          message: `Process ${processId} killed successfully`
+        });
+      } catch (killError) {
+        // Process might not exist or permission denied
+        res.status(400).json({
+          success: false,
+          error: killError.message || 'Failed to kill process'
+        });
+      }
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

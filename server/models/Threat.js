@@ -85,6 +85,28 @@ class Threat {
       }
     };
   }
+
+  static clearAll() {
+    try {
+      if (fs.existsSync(THREATS_FILE)) {
+        fs.writeFileSync(THREATS_FILE, JSON.stringify([], null, 2));
+      }
+      return { success: true, message: 'All threats cleared' };
+    } catch (e) {
+      throw new Error(`Failed to clear threats: ${e.message}`);
+    }
+  }
+
+  static clearByType(type) {
+    try {
+      let threats = this.getAll(1000);
+      threats = threats.filter(t => t.type !== type);
+      fs.writeFileSync(THREATS_FILE, JSON.stringify(threats, null, 2));
+      return { success: true, message: `Cleared all ${type} threats` };
+    } catch (e) {
+      throw new Error(`Failed to clear threats: ${e.message}`);
+    }
+  }
 }
 
 module.exports = Threat;

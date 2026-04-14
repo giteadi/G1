@@ -23,13 +23,21 @@ router.post('/run', async (req, res) => {
     
     let results;
     if (module) {
-      // Per-module scan
-      const scanMethod = `check${module.charAt(0).toUpperCase() + module.slice(1)}`;
+      // Per-module scan - construct method name
+      const scanMethod = `check${module}`;
       if (typeof scanner[scanMethod] === 'function') {
         const result = await scanner[scanMethod]();
         results = [result];
       } else {
-        return res.status(400).json({ error: `Invalid module: ${module}` });
+        logger.error(`Invalid module: ${module}, method: ${scanMethod}`);
+        return res.status(400).json({ 
+          error: `Invalid module: ${module}`,
+          available: [
+            'CryptoMiners', 'Rootkit', 'SuspiciousCrons', 'OpenPorts',
+            'SSHConfig', 'PrivacyLeaks', 'DarkWebConnections', 'HiddenProcesses',
+            'ServerProtection', 'CryptoDetector'
+          ]
+        });
       }
     } else {
       // Full scan
@@ -105,8 +113,25 @@ router.post('/run', async (req, res) => {
 
 // Per-module manual scans
 router.post('/crypto', async (req, res) => {
-  req.body.module = 'cryptoMiners';
-  return router.handle(req, res);
+  try {
+    const config = loadConfig();
+    const CryptoDetector = require('../services/CryptoDetector');
+    const detector = new CryptoDetector(config);
+
+    logger.info('Advanced crypto detection scan triggered');
+
+    const result = await detector.detect();
+
+    res.json({
+      success: true,
+      scan_type: 'crypto_detector',
+      timestamp: new Date().toISOString(),
+      ...result
+    });
+  } catch (e) {
+    logger.error(`Crypto scan error: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.post('/rootkit', async (req, res) => {
