@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { io } from 'socket.io-client'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import SystemStats from './components/SystemStats'
@@ -6,6 +7,9 @@ import ThreatMonitor from './components/ThreatMonitor'
 import ProtectionModules from './components/ProtectionModules'
 import ActionPanel from './components/ActionPanel'
 import ContextEngine from './components/ContextEngine'
+import api from './services/api'
+
+const socket = io('http://localhost:3000')
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -15,17 +19,46 @@ function App() {
     net: 30,
     threats: 0
   })
+  const [learningStats, setLearningStats] = useState(null)
+  const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setSystemData(prev => ({
-        cpu: Math.floor(Math.random() * 30) + 40,
-        ram: Math.floor(Math.random() * 20) + 50,
-        net: Math.floor(Math.random() * 50) + 10,
-        threats: prev.threats
-      }))
-    }, 3000)
-    return () => clearInterval(interval)
+    // Socket.io connection
+    socket.on('connect', () => {
+      setIsConnected(true)
+      console.log('Connected to G1 Guardian')
+    })
+
+    socket.on('disconnect', () => {
+      setIsConnected(false)
+      console.log('Disconnected from G1 Guardian')
+    })
+
+    socket.on('metrics', (data) => {
+      setSystemData({
+        cpu: data.cpu || 0,
+        ram: data.ram || 0,
+        net: Math.round((data.net_rx || 0) / 1024 / 1024),
+        threats: data.blocked_count || 0
+      })
+    })
+
+    // Fetch learning stats
+    const fetchLearningStats = async () => {
+      const result = await api.fetchLearningStats()
+      if (result?.success) {
+        setLearningStats(result.data)
+      }
+    }
+    fetchLearningStats()
+    const interval = setInterval(fetchLearningStats, 30000)
+
+    return () => {
+      socket.off('connect')
+      socket.off('disconnect')
+      socket.off('metrics')
+      clearInterval(interval)
+    }
   }, [])
 
   return (

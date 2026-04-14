@@ -15,7 +15,7 @@ const PORT = process.env.PORT || config.dashboard_port || 3000;
 const server = http.createServer(app);
 const io = socketio(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:3001'],
+    origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:3001', 'http://localhost:5173', 'http://localhost:5174'],
     methods: ['GET', 'POST']
   }
 });
@@ -81,6 +81,12 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, () => {
   logger.info(`G1 Guardian Dashboard running on port ${PORT}`);
+  
+  // Start self-learning scheduler
+  const LearningScheduler = require('./services/LearningScheduler');
+  const scheduler = new LearningScheduler(config);
+  scheduler.start();
+  logger.info('G1 Self-Learning System started');
 });
 
 module.exports = { server, io };
