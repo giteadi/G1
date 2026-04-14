@@ -92,6 +92,28 @@ const SEED_RULES = [
     action: ['quarantine_cron', 'alert'],
     learned_at: '2024-01-01T00:00:00Z',
     hit_count: 0
+  },
+  {
+    id: 'rule_tor_traffic',
+    name: 'Tor / Dark web traffic',
+    source: 'builtin',
+    confidence: 0.90,
+    match: { type: 'port_open', ports: [9050, 9051, 9150, 9151, 9001, 9030] },
+    severity: 'high',
+    action: ['block_ip', 'alert'],
+    learned_at: '2024-01-01T00:00:00Z',
+    hit_count: 0
+  },
+  {
+    id: 'rule_c2_ports',
+    name: 'C2 / RAT communication ports',
+    source: 'builtin',
+    confidence: 0.88,
+    match: { type: 'port_open', ports: [4444, 4445, 1337, 31337, 6666, 6667] },
+    severity: 'critical',
+    action: ['block_ip', 'kill_process', 'alert'],
+    learned_at: '2024-01-01T00:00:00Z',
+    hit_count: 0
   }
 ];
 

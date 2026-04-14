@@ -33,6 +33,8 @@ class ScannerService {
       this.checkSuspiciousSudoers(),
       this.checkSSHConfig(),
       this.checkWorldWritable(),
+      this.checkPrivacyLeaks(),
+      this.checkDarkWebConnections(),
       deep ? this.checkHiddenProcesses() : Promise.resolve({ module: 'hidden_processes', status: 'skipped', message: 'Use --deep to run' })
     ]);
 
@@ -186,6 +188,105 @@ class ScannerService {
       message: findings.length ? `${findings.length} world-writable file(s)` : 'No world-writable files',
       findings
     };
+  }
+
+  async checkPrivacyLeaks() {
+    const findings = [];
+    try {
+      // Mic/Camera access check - macOS
+      const audioCheck = execSync(
+        'lsof 2>/dev/null | grep -iE "coreaudio|AppleHDA|iSight|FaceTime|avfoundation" | grep -vE "Google|Spotify|Zoom|Teams|FaceTime|Music|QuickTime" || true'
+      ).toString().trim();
+      
+      if (audioCheck) {
+        audioCheck.split('\n').filter(Boolean).forEach(line => {
+          const procName = line.split(/\s+/)[0];
+          findings.push(`Unexpected mic/camera access: ${procName}`);
+        });
+      }
+
+      // Linux mic check
+      const linuxAudio = execSync(
+        'lsof /dev/snd/* /dev/audio /dev/dsp 2>/dev/null | grep -v "pulse\\|alsa\\|system" || true'
+      ).toString().trim();
+      
+      if (linuxAudio) {
+        linuxAudio.split('\n').filter(Boolean).forEach(line => {
+          findings.push(`Audio device access: ${line.split(/\s+/)[0]}`);
+        });
+      }
+    } catch(e) {}
+
+    return {
+      module: 'privacy_leaks',
+      status: findings.length ? 'threat' : 'clean',
+      message: findings.length ? `${findings.length} suspicious device access(es)` : 'No privacy leaks detected',
+      findings
+    };
+  }
+
+  async checkDarkWebConnections() {
+    const findings = [];
+    try {
+      // Tor traffic check - port 9050/9150
+      const torCheck = execSync(
+        'netstat -an 2>/dev/null || ss -an 2>/dev/null || true'
+      ).toString();
+      
+      if (torCheck.includes(':9050') || torCheck.includes(':9150')) {
+        findings.push('Tor connection detected (port 9050/9150) — possible dark web traffic');
+      }
+
+      // Known Tor exit node ports
+      const connections = await si.networkConnections();
+      const darkWebPorts = [9001, 9030, 9050, 9051, 9150, 9151];
+      
+      connections.forEach(c => {
+        if (darkWebPorts.includes(c.peerPort) || darkWebPorts.includes(c.localPort)) {
+          findings.push(`Dark web port active: ${c.localPort} → ${c.peerAddress}:${c.peerPort}`);
+        }
+      });
+
+      // Suspicious outbound to unknown IPs on weird ports
+      const suspiciousOutbound = connections.filter(c =>
+        c.state === 'ESTABLISHED' &&
+        c.peerAddress &&
+        !['192.168', '10.', '127.', '::1', 'fe80'].some(local => c.peerAddress.startsWith(local)) &&
+        [4444, 4445, 1337, 31337, 6666, 6667, 6697].includes(c.peerPort)
+      );
+      
+      suspiciousOutbound.forEach(c => {
+        findings.push(`Suspicious outbound C2 connection: ${c.peerAddress}:${c.peerPort}`);
+      });
+
+      // Data exfiltration check - unusual upload spike
+      const { tx_per_sec } = await this.getNetworkSpeedLocal();
+      if (tx_per_sec > 10_000_000) { // 10MB/s upload
+        findings.push(`High upload detected: ${(tx_per_sec/1_000_000).toFixed(1)} MB/s — possible data exfil`);
+      }
+    } catch(e) {}
+
+    return {
+      module: 'darkweb_connections',
+      status: findings.length ? 'threat' : 'clean',
+      message: findings.length ? `${findings.length} dark web/C2 indicator(s)` : 'No dark web activity detected',
+      findings
+    };
+  }
+
+  // ScannerService ke liye local network speed helper
+  async getNetworkSpeedLocal() {
+    try {
+      const net1 = await si.networkStats();
+      await new Promise(r => setTimeout(r, 1000));
+      const net2 = await si.networkStats();
+      return {
+        rx_per_sec: Math.max(0, (net2[0]?.rx_bytes || 0) - (net1[0]?.rx_bytes || 0)),
+        tx_per_sec: Math.max(0, (net2[0]?.tx_bytes || 0) - (net1[0]?.tx_bytes || 0))
+      };
+    } catch {
+      return { rx_per_sec: 0, tx_per_sec: 0 };
+    }
   }
 
   async checkHiddenProcesses() {

@@ -6,12 +6,14 @@ const Threat = require('../models/Threat');
 const BlockedIP = require('../models/BlockedIP');
 const Memory = require('../models/Memory');
 const BrainService = require('./BrainService');
+const WhatsAppService = require('./WhatsAppService');
 const logger = require('../utils/logger');
 
 class MonitorService {
   constructor(config) {
     this.config = config;
     this.brain = new BrainService(config);
+    this.whatsapp = new WhatsAppService(config);
     this.knownSuspiciousProcs = new Set();
     this.recentEvents = [];
     this.isRunning = false;
@@ -59,6 +61,7 @@ class MonitorService {
       await this.checkCryptoMining();
       await this.checkBruteForce();
       await this.checkDDoS();
+      await this.checkOutboundSurveillance();
     } catch (e) {
       logger.error(`Monitor cycle error: ${e.message}`);
     }
@@ -257,6 +260,37 @@ class MonitorService {
     }
   }
 
+  async checkOutboundSurveillance() {
+    try {
+      const connections = await si.networkConnections();
+
+      // Known bad IP ranges (data brokers, C2 servers)
+      const knownBadRanges = [
+        '185.220.', '198.96.', '23.129.', // Tor relays
+        '91.108.', '149.154.',             // Telegram (agar unexpected ho)
+        '5.188.', '45.142.'               // Common botnet ranges
+      ];
+
+      const flagged = connections.filter(c =>
+        c.state === 'ESTABLISHED' &&
+        c.peerAddress &&
+        knownBadRanges.some(range => c.peerAddress.startsWith(range))
+      );
+
+      for (const conn of flagged) {
+        this.saveThreat({
+          type: 'suspicious_outbound',
+          severity: 'high',
+          message: `Suspicious outbound to known bad IP: ${conn.peerAddress}:${conn.peerPort}`,
+          attacker_ip: conn.peerAddress,
+          findings: [`Local port ${conn.localPort} → ${conn.peerAddress}:${conn.peerPort}`]
+        });
+      }
+    } catch(e) {
+      logger.error(`checkOutboundSurveillance error: ${e.message}`);
+    }
+  }
+
   async deepScan() {
     const ScannerService = require('./ScannerService');
     const scanner = new ScannerService(this.config);
@@ -320,7 +354,39 @@ class MonitorService {
     Memory.addThreat(threat);
     this.recentEvents.push(threat);
     if (this.recentEvents.length > 100) this.recentEvents = this.recentEvents.slice(-100);
+    
     logger.warn(`Threat detected: ${threat.type} - ${threat.message}`);
+    
+    // Send WhatsApp notification for high/critical threats
+    if (threat.severity === 'high' || threat.severity === 'critical') {
+      this.whatsapp.sendThreatAlert(threat).catch(e => 
+        logger.error(`WhatsApp alert failed: ${e.message}`)
+      );
+    }
+    
+    // Critical threats ko turant auto-resolve karo
+    const autoResolvableTypes = [
+      'darkweb_connections',
+      'suspicious_outbound',
+      'crypto_mining'
+    ];
+    
+    if (
+      autoResolvableTypes.includes(threat.type) &&
+      (threat.severity === 'critical' || threat.severity === 'high')
+    ) {
+      const CleanerService = require('./CleanerService');
+      const cleaner = new CleanerService(this.config);
+      
+      cleaner.handleThreat(threat, true)
+        .then(result => {
+          logger.warn(`Auto-resolved ${threat.type}: ${result.action}`);
+        })
+        .catch(e => {
+          logger.error(`Auto-resolve failed for ${threat.type}: ${e.message}`);
+        });
+    }
+    
     return threat;
   }
 

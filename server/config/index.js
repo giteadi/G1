@@ -22,6 +22,9 @@ const defaultConfig = {
   whitelist_ips: [],
   alert_email: null,
   slack_webhook: null,
+  whatsapp_api_url: process.env.WHATSAPP_API_URL || '',
+  whatsapp_api_key: process.env.WHATSAPP_API_KEY || '',
+  whatsapp_phone: process.env.WHATSAPP_PHONE || '',
   log_level: 'info'
 };
 
