@@ -135,13 +135,43 @@ router.post('/crypto', async (req, res) => {
 });
 
 router.post('/rootkit', async (req, res) => {
-  req.body.module = 'rootkit';
-  return router.handle(req, res);
+  try {
+    const config = loadConfig();
+    const SecurityModules = require('../services/SecurityModules');
+    const security = new SecurityModules(config);
+
+    const result = await security.rootkitScan();
+
+    res.json({
+      success: true,
+      scan_type: 'rootkit',
+      timestamp: new Date().toISOString(),
+      ...result
+    });
+  } catch (e) {
+    logger.error(`Rootkit scan error: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.post('/ssh', async (req, res) => {
-  req.body.module = 'sSHConfig';
-  return router.handle(req, res);
+  try {
+    const config = loadConfig();
+    const SecurityModules = require('../services/SecurityModules');
+    const security = new SecurityModules(config);
+
+    const result = await security.sshScan();
+
+    res.json({
+      success: true,
+      scan_type: 'ssh',
+      timestamp: new Date().toISOString(),
+      ...result
+    });
+  } catch (e) {
+    logger.error(`SSH scan error: ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.post('/ports', async (req, res) => {

@@ -8,7 +8,9 @@
     "daemon": "node daemon.js",
     "dev": "NODE_ENV=development nodemon server.js",
     "dev:daemon": "NODE_ENV=development nodemon daemon.js",
-    "test:brain": "node test-brain.js"
+    "test:brain": "node test-brain.js",
+    "test:security": "node test-security-apis.js",
+    "test:api": "node test-security-apis.js"
   },
   "keywords": [
     "security",

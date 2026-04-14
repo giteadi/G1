@@ -5,6 +5,7 @@ const path = require('path');
 
 const DATA_DIR = path.join(process.env.HOME || '/root', '.g1');
 const THREATS_FILE = path.join(DATA_DIR, 'threats.json');
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
 
 class Threat {
   constructor(data) {
@@ -27,8 +28,31 @@ class Threat {
   static getAll(limit = 500) {
     try {
       if (!fs.existsSync(THREATS_FILE)) return [];
+
+      // Check file size to prevent reading huge files
+      const stats = fs.statSync(THREATS_FILE);
+      if (stats.size > MAX_FILE_SIZE) {
+        console.warn(`Threats file too large (${stats.size} bytes), truncating...`);
+        // Keep only last 1000 threats by rewriting file
+        return this._truncateAndRead(limit);
+      }
+
       const threats = JSON.parse(fs.readFileSync(THREATS_FILE, 'utf8') || '[]');
       return threats.slice(-limit).reverse();
+    } catch (e) {
+      console.error('Error reading threats:', e.message);
+      return [];
+    }
+  }
+
+  static _truncateAndRead(limit) {
+    try {
+      const content = fs.readFileSync(THREATS_FILE, 'utf8');
+      const threats = JSON.parse(content || '[]');
+      // Keep only last 1000 entries
+      const trimmed = threats.slice(-1000);
+      fs.writeFileSync(THREATS_FILE, JSON.stringify(trimmed, null, 2));
+      return trimmed.slice(-limit).reverse();
     } catch (e) {
       return [];
     }
@@ -47,12 +71,27 @@ class Threat {
 
   static save(threatData) {
     const threat = new Threat(threatData);
-    let threats = this.getAll(1000);
-    threats.push(threat);
-    if (threats.length > 500) threats = threats.slice(-500);
-    
+
     try {
       if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+      // Read file directly instead of calling getAll() to avoid recursion
+      let threats = [];
+      if (fs.existsSync(THREATS_FILE)) {
+        try {
+          const stats = fs.statSync(THREATS_FILE);
+          if (stats.size < MAX_FILE_SIZE) {
+            threats = JSON.parse(fs.readFileSync(THREATS_FILE, 'utf8') || '[]');
+          } else {
+            // File too large, start fresh
+            threats = [];
+          }
+        } catch {}
+      }
+
+      threats.push(threat);
+      if (threats.length > 500) threats = threats.slice(-500);
+
       fs.writeFileSync(THREATS_FILE, JSON.stringify(threats, null, 2));
       return threat;
     } catch (e) {
@@ -61,14 +100,26 @@ class Threat {
   }
 
   static markCleaned(id) {
-    let threats = this.getAll(1000);
-    const threat = threats.find(t => t.id === id);
-    if (threat) {
-      threat.cleaned = true;
-      threat.cleaned_at = new Date().toISOString();
-      fs.writeFileSync(THREATS_FILE, JSON.stringify(threats, null, 2));
+    try {
+      let threats = [];
+      if (fs.existsSync(THREATS_FILE)) {
+        const stats = fs.statSync(THREATS_FILE);
+        if (stats.size < MAX_FILE_SIZE) {
+          threats = JSON.parse(fs.readFileSync(THREATS_FILE, 'utf8') || '[]');
+        }
+      }
+
+      const threat = threats.find(t => t.id === id);
+      if (threat) {
+        threat.cleaned = true;
+        threat.cleaned_at = new Date().toISOString();
+        fs.writeFileSync(THREATS_FILE, JSON.stringify(threats, null, 2));
+      }
+      return threat;
+    } catch (e) {
+      console.error('Error marking threat cleaned:', e.message);
+      return null;
     }
-    return threat;
   }
 
   static getStats() {
@@ -99,10 +150,20 @@ class Threat {
 
   static clearByType(type) {
     try {
-      let threats = this.getAll(1000);
+      let threats = [];
+      if (fs.existsSync(THREATS_FILE)) {
+        const stats = fs.statSync(THREATS_FILE);
+        if (stats.size < MAX_FILE_SIZE) {
+          threats = JSON.parse(fs.readFileSync(THREATS_FILE, 'utf8') || '[]');
+        }
+      }
+
+      const originalCount = threats.length;
       threats = threats.filter(t => t.type !== type);
       fs.writeFileSync(THREATS_FILE, JSON.stringify(threats, null, 2));
-      return { success: true, message: `Cleared all ${type} threats` };
+
+      const cleared = originalCount - threats.length;
+      return { success: true, message: `Cleared ${cleared} ${type} threat(s)` };
     } catch (e) {
       throw new Error(`Failed to clear threats: ${e.message}`);
     }

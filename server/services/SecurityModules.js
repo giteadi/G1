@@ -176,11 +176,15 @@ class SecurityModules {
   }
 
   // ==================== DDOS GUARD MODULE ====================
-  async ddosScan() {
+  async ddosScan(cachedConnections = null) {
     const findings = [];
     try {
-      // SCAN: netstat -an | grep :80 | wc -l
-      const connections = await si.networkConnections();
+      // SCAN: netstat -an | grep :80 | wc -l (use cached connections if provided)
+      const connections = cachedConnections || await Promise.race([
+        si.networkConnections(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+      ]);
+
       const port80Conns = connections.filter(c => c.localPort === 80 || c.localPort === 443);
 
       // Group by remote IP
@@ -272,17 +276,20 @@ class SecurityModules {
   async rootkitScan() {
     const findings = [];
     try {
-      // SCAN: sudo chkrootkit
-      let chkrootkitOutput = '';
-      try {
-        chkrootkitOutput = execSync('chkrootkit 2>/dev/null | grep -i "infected\\|warning\\|suspicious" || true').toString();
-      } catch {}
+      const { exec } = require('child_process');
+      const util = require('util');
+      const execAsync = util.promisify(exec);
 
-      // SCAN: sudo rkhunter --check
-      let rkhunterOutput = '';
-      try {
-        rkhunterOutput = execSync('rkhunter --check --sk --rwo 2>/dev/null | grep -i "warning\\|infected" || true').toString();
-      } catch {}
+      // Dono parallel mein chalao, 8 second timeout ke saath
+      const [chkResult, rkhResult] = await Promise.allSettled([
+        execAsync('chkrootkit 2>/dev/null | grep -i "infected\\|warning\\|suspicious" || true',
+          { timeout: 8000 }),
+        execAsync('rkhunter --check --sk --rwo 2>/dev/null | grep -i "warning\\|infected" || true',
+          { timeout: 8000 })
+      ]);
+
+      const chkrootkitOutput = chkResult.status === 'fulfilled' ? chkResult.value.stdout : '';
+      const rkhunterOutput   = rkhResult.status === 'fulfilled' ? rkhResult.value.stdout : '';
 
       // IDENTIFY: hidden binaries + system file tampering
       const hasInfection = chkrootkitOutput.includes('INFECTED') || rkhunterOutput.includes('Warning');
@@ -300,11 +307,10 @@ class SecurityModules {
             system_tampering: rkhunterOutput.includes('Warning'),
             rootkit_detected: hasRootkit
           },
-          details: { chkrootkit: chkrootkitOutput, rkhunter: rkhunterOutput },
+          details: { chkrootkit: chkrootkitOutput.slice(0, 500), rkhunter: rkhunterOutput.slice(0, 500) },
           resolve_commands: [
             'apt install chkrootkit rkhunter -y',
             'rkhunter --update',
-            'rkhunter --check --sk',
             '⚠️ SEVERE CASE: backup → reinstall OS'
           ],
           severity_note: level === 3 ? 'CRITICAL: Consider OS reinstallation' : 'Review required'
@@ -580,24 +586,38 @@ X11Forwarding no
   }
 
   // ==================== DARK WEB / C2 MODULE ====================
-  async darkwebScan() {
+  async darkwebScan(cachedConnections = null) {
     const findings = [];
     try {
-      // SCAN: netstat -tunap
-      const connections = await si.networkConnections();
-      const established = connections.filter(c => c.state === 'ESTABLISHED');
+      // SCAN: netstat -tunap (use cached connections if provided for consistency)
+      const connections = cachedConnections || await Promise.race([
+        si.networkConnections(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+      ]);
+
+      // Deduplicate connections by peer address+port to avoid counting the same connection multiple times
+      const seen = new Set();
+      const uniqueConnections = connections.filter(c => {
+        const key = `${c.peerAddress}:${c.peerPort}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return c.state === 'ESTABLISHED';
+      });
 
       const torPorts = [9050, 9051, 9150, 9151, 9001, 9030];
       const c2Ports = [4444, 4445, 1337, 31337, 6666, 6667];
 
-      for (const conn of established) {
+      // Suspicious high ports - specific list instead of broad >10000
+      const suspiciousHighPorts = [8443, 9999, 12345, 54321, 65535];
+
+      for (const conn of uniqueConnections) {
         const isTor = torPorts.includes(conn.peerPort);
         const isC2 = c2Ports.includes(conn.peerPort);
-        const isUnknownForeign = !this.isPrivateIP(conn.peerAddress) && !this.whitelist.has(conn.peerAddress);
+        const isSuspiciousHigh = suspiciousHighPorts.includes(conn.peerPort);
 
-        if (isTor || isC2 || (isUnknownForeign && conn.peerPort > 10000)) {
-          let level = 2;
-          if (isC2 || isTor) level = 3; // Attack
+        // Only flag Tor, C2, or specific suspicious ports
+        if (isTor || isC2 || isSuspiciousHigh) {
+          let level = 3; // All are attack level
 
           findings.push({
             type: 'darkweb_c2',
@@ -608,7 +628,7 @@ X11Forwarding no
             indicators: {
               tor_traffic: isTor,
               c2_connection: isC2,
-              unknown_foreign: isUnknownForeign
+              suspicious_high_port: isSuspiciousHigh
             },
             resolve_commands: [
               `iptables -A OUTPUT -d ${conn.peerAddress} -j DROP`,
@@ -692,16 +712,27 @@ X11Forwarding no
 
   // ==================== MASTER LOGIC ====================
   async masterScan() {
+    // Cache network connections for consistency across all network-based scans
+    let cachedConnections = null;
+    try {
+      cachedConnections = await Promise.race([
+        si.networkConnections(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+      ]);
+    } catch (e) {
+      logger.error('Failed to cache network connections:', e.message);
+    }
+
     const allResults = await Promise.all([
       this.cryptoMinerScan(),
       this.bruteForceScan(),
-      this.ddosScan(),
+      this.ddosScan(cachedConnections),
       this.rootkitScan(),
       this.cronScan(),
       this.portsScan(),
       this.sshScan(),
       this.privacyScan(),
-      this.darkwebScan(),
+      this.darkwebScan(cachedConnections),
       this.systemMonitor()
     ]);
 

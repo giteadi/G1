@@ -33,15 +33,27 @@ async function getNetworkSpeed() {
 class StatusController {
   static async getStatus(req, res) {
     try {
-      const stats = Threat.getStats();
+      // Individual try-catch for each operation to prevent total failure
+      let stats = { total: 0, today: 0, bySeverity: {} };
+      let blockedIps = [];
+
+      try { stats = Threat.getStats(); } catch (err) {
+        console.error('Error getting threat stats:', err.message);
+      }
+
+      try { blockedIps = BlockedIP.getAll(); } catch (err) {
+        console.error('Error getting blocked IPs:', err.message);
+      }
+
       const config = loadConfig();
 
       res.json({
+        success: true,
         status: 'active',
         uptime: process.uptime(),
         version: '1.0.0',
         threats: stats,
-        blocked_ips: BlockedIP.getAll(),
+        blocked_ips: blockedIps,
         config: {
           auto_block: config.auto_block,
           auto_kill: config.auto_kill,
@@ -52,7 +64,7 @@ class StatusController {
         }
       });
     } catch (e) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ success: false, error: e.message });
     }
   }
 

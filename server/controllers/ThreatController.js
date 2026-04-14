@@ -14,9 +14,9 @@ class ThreatController {
     try {
       const limit = parseInt(req.query.limit) || 100;
       const threats = Threat.getAll(limit);
-      res.json(threats);
+      res.json({ success: true, count: threats.length, threats });
     } catch (e) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ success: false, error: e.message });
     }
   }
 
@@ -24,9 +24,9 @@ class ThreatController {
     try {
       const hours = parseInt(req.query.hours) || 24;
       const threats = Threat.getRecent(hours);
-      res.json(threats);
+      res.json({ success: true, count: threats.length, threats });
     } catch (e) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ success: false, error: e.message });
     }
   }
 
@@ -45,9 +45,9 @@ class ThreatController {
   static async getStats(req, res) {
     try {
       const stats = Threat.getStats();
-      res.json(stats);
+      res.json({ success: true, ...stats });
     } catch (e) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ success: false, error: e.message });
     }
   }
 
@@ -145,9 +145,9 @@ class ThreatController {
   static async getBlockedIPs(req, res) {
     try {
       const ips = BlockedIP.getAll();
-      res.json({ count: ips.length, ips });
+      res.json({ success: true, count: ips.length, ips });
     } catch (e) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ success: false, error: e.message });
     }
   }
 
