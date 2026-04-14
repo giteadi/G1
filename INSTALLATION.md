@@ -494,6 +494,157 @@ npm install
 
 ---
 
-## 📝 License
+## � NPM Package Publishing Guide (For Maintainers)
+
+This section documents how G1 Guardian was published to npm registry for reference.
+
+### Prerequisites
+
+- NPM account with 2FA enabled
+- Granular access token with publish permissions
+
+### Step 1: Enable 2FA on NPM Account
+
+1. Go to https://www.npmjs.com/settings
+2. Navigate to "Two-Factor Authentication"
+3. Enable 2FA for authorization and publishing
+4. Save security key in authenticator app
+
+### Step 2: Create Granular Access Token
+
+1. Go to https://www.npmjs.com/settings/tokens
+2. Click "Generate New Token" → "Granular Access Token"
+3. Fill in the form:
+
+| Field | Value |
+|-------|-------|
+| **Token name** | `g1-guardian-publish` |
+| **Description** | `For publishing g1-guardian package` |
+| **☑️ Bypass 2FA** | **CHECK THIS BOX** |
+| **IP ranges** | Leave empty |
+| **Packages permissions** | Read and write |
+| **Select packages** | All packages (or specific) |
+| **Organizations** | No access |
+| **Expiration** | 30 days (or as needed) |
+
+4. Click "Generate token"
+5. **COPY TOKEN IMMEDIATELY** (shown only once)
+
+### Step 3: Configure NPM with Token
+
+```bash
+# Set the token in npm config
+npm config set //registry.npmjs.org/:_authToken YOUR_TOKEN_HERE
+
+# Note: Replace YOUR_TOKEN_HERE with your actual granular access token
+# Never commit real tokens to git
+```
+
+### Step 4: Prepare Package
+
+Ensure `server/package.json` has correct fields:
+
+```json
+{
+  "name": "g1-guardian",
+  "version": "1.0.0",
+  "description": "G1 Guardian - AI-powered server security monitoring system",
+  "main": "server.js",
+  "bin": {
+    "g1": "./bin/cli.js"
+  },
+  "scripts": {
+    "postinstall": "node bin/postinstall.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/giteadi/G1.git"
+  },
+  "keywords": [
+    "security",
+    "ai",
+    "monitoring",
+    "linux",
+    "cybersecurity",
+    "threat-detection",
+    "server-protection"
+  ],
+  "author": "G1 Guardian",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+```
+
+### Step 5: Publish Package
+
+```bash
+cd server
+npm publish
+```
+
+Expected output:
+```
++ g1-guardian@1.0.0
+```
+
+### Step 6: Verify Publication
+
+```bash
+npm view g1-guardian
+```
+
+### Updating Published Package
+
+For version updates:
+
+```bash
+# Update version in package.json
+cd server
+npm version patch  # or minor, major
+
+# Publish again
+npm publish
+```
+
+### Common Issues & Solutions
+
+#### 403 Forbidden Error
+- **Cause**: 2FA enabled but no bypass token
+- **Solution**: Create granular token with "Bypass 2FA" checked
+
+#### 404 Not Found Error
+- **Cause**: Package name taken or scope doesn't exist
+- **Solution**: Use unique package name or create scope first
+
+#### EACCES Permission Denied
+- **Cause**: npm link without sudo
+- **Solution**: Use `sudo npm link` or publish without linking
+
+#### Package.json Warnings
+```
+npm warn publish "bin[g1]" script name was cleaned
+npm warn publish "repository.url" was normalized
+```
+- These are auto-corrected by npm, safe to ignore
+
+### Security Notes
+
+1. **Never commit tokens** to git repository
+2. **Rotate tokens** every 30-90 days
+3. **Use environment variables** for CI/CD publishing
+4. **Revoke tokens** immediately if compromised
+5. **Enable 2FA** on all npm accounts
+
+### Resources
+
+- NPM Granular Tokens: https://docs.npmjs.com/creating-and-viewing-access-tokens
+- NPM Publishing: https://docs.npmjs.com/packages-and-modules/contributing-packages-to-the-registry
+- Package.json Guide: https://docs.npmjs.com/cli/v10/configuring-npm/package-json
+
+---
+
+## �📝 License
 
 MIT License - See LICENSE file for details
