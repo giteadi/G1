@@ -32,14 +32,16 @@ io.on('connection', (socket) => {
   // Send metrics every 2 seconds
   const metricsInterval = setInterval(async () => {
     try {
-      const [cpu, mem, net] = await Promise.all([
+      const [cpu, mem, net, cpuInfo] = await Promise.all([
         si.currentLoad(),
         si.mem(),
-        si.networkStats()
+        si.networkStats(),
+        si.cpu()
       ]);
 
       socket.emit('metrics', {
         cpu: Math.round(cpu.currentLoad),
+        cpu_cores: cpuInfo.cores || 8,
         ram: Math.round((mem.used / mem.total) * 100),
         ram_used_gb: (mem.used / 1073741824).toFixed(1),
         ram_total_gb: (mem.total / 1073741824).toFixed(1),

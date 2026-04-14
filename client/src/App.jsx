@@ -37,8 +37,12 @@ function App() {
     socket.on('metrics', (data) => {
       setSystemData({
         cpu: data.cpu || 0,
+        cpu_cores: data.cpu_cores || 8,
         ram: data.ram || 0,
-        net: Math.round((data.net_rx || 0) / 1024 / 1024),
+        ram_used_gb: data.ram_used_gb,
+        ram_total_gb: data.ram_total_gb,
+        net_rx: data.net_rx || 0,
+        net_tx: data.net_tx || 0,
         threats: data.blocked_count || 0
       })
     })
